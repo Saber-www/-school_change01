@@ -1,5 +1,9 @@
 <template>
   <header class="topbar">
+    <button class="icon-button back-button hide" id="backButton" type="button" title="返回上一处">
+      <i data-lucide="arrow-left" aria-hidden="true"></i>
+    </button>
+
     <button class="brand-button" id="brandButton" type="button" title="返回首页">
       <span class="brand-mark">集</span>
       <span>

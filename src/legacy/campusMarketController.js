@@ -7,7 +7,6 @@ import {
   IMAGE_POOL,
   LISTING_STATUSES,
   PUBLIC_LISTING_STATUSES,
-  QUICK_MESSAGES,
   REVIEW_WORDS,
   SERVER_SYNC_KEY,
   SESSION_KEY,
@@ -15,6 +14,7 @@ import {
   TASK_PROGRESS_STEPS,
   TASK_STATUSES,
 } from "./constants.js";
+import { createMessagesFeature } from "./messagesFeature.js";
 import { createInitialDb } from "./seedData.js";
 import {
   $,
@@ -35,6 +35,10 @@ let db = loadDb();
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let currentUserId = authToken ? Number(localStorage.getItem(SESSION_KEY)) || 0 : 0;
 let searchTimer = 0;
+let summaryRefreshTimer = 0;
+let summaryRefreshPending = false;
+
+const SUMMARY_REFRESH_INTERVAL = 15000;
 
 const state = {
   view: "home",
@@ -54,6 +58,34 @@ const state = {
   selectedConversationId: null,
   authMode: "login",
 };
+
+const viewHistory = [];
+const MAX_VIEW_HISTORY = 30;
+
+const {
+  unreadMessageCount,
+  unreadCountLabel,
+  prepareMessageReadState,
+  renderMessages,
+  sendMessage,
+  startConversation,
+} = createMessagesFeature({
+  state,
+  getDb: () => db,
+  saveDb,
+  currentUser,
+  userById,
+  itemByKind,
+  canBrowseItem,
+  unavailableItemText,
+  ensureAuth,
+  setView,
+  render,
+  toast,
+  nextId,
+  renderAuthRequired,
+  renderInlineEmpty,
+});
 
 function loadDb() {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -330,53 +362,6 @@ function renderReportButton(kind, id) {
   return `<button class="ghost-button" type="button" data-action="open-report" data-kind="${kind}" data-id="${id}">${icon("flag")}举报</button>`;
 }
 
-function conversationsForUser(user) {
-  if (!user) return [];
-  return db.conversations
-    .filter((conv) => conv.participants.includes(user.id))
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-}
-
-function unreadMessageCount(user = currentUser()) {
-  if (!user) return 0;
-  return db.conversations
-    .filter((conv) => conv.participants.includes(user.id))
-    .reduce((total, conv) => total + unreadCountForConversation(conv, user), 0);
-}
-
-function unreadCountForConversation(conv, user = currentUser()) {
-  if (!conv || !user) return 0;
-  const readAt = conv.readBy?.[user.id] || conv.readBy?.[String(user.id)] || "";
-  const readTime = readAt ? new Date(readAt).getTime() : 0;
-  return (conv.messages || []).filter((message) => {
-    const messageTime = new Date(message.createdAt).getTime();
-    return message.senderId !== user.id && Number.isFinite(messageTime) && messageTime > readTime;
-  }).length;
-}
-
-function unreadCountLabel(count) {
-  return count > 99 ? "99+" : String(count);
-}
-
-function prepareMessageReadState() {
-  const user = currentUser();
-  if (state.view !== "messages" || !user || user.verifyStatus !== "已认证") return;
-  const conversations = conversationsForUser(user);
-  if ((!state.selectedConversationId || !conversations.some((conv) => conv.id === state.selectedConversationId)) && conversations.length) {
-    state.selectedConversationId = conversations[0].id;
-  }
-  const selected = conversations.find((conv) => conv.id === state.selectedConversationId);
-  if (markConversationRead(selected, user)) saveDb();
-}
-
-function markConversationRead(conv, user = currentUser()) {
-  if (!conv || !user) return false;
-  if (!unreadCountForConversation(conv, user)) return false;
-  const nextReadAt = new Date().toISOString();
-  conv.readBy = { ...(conv.readBy || {}), [user.id]: nextReadAt };
-  return true;
-}
-
 function itemTitle(kind, id) {
   return itemByKind(kind, id)?.title || "关联信息已不存在";
 }
@@ -388,6 +373,136 @@ function itemPublisher(kind, id) {
 
 function isTaskChannel(channel) {
   return channel === "跑腿代取" || channel === "校内送货";
+}
+
+function profileSummaryFor(user) {
+  if (!user) {
+    return {
+      posts: 0,
+      tasks: 0,
+      favorites: 0,
+      conversations: 0,
+      unreadMessages: 0,
+    };
+  }
+
+  const tasks = db.tasks.filter((task) => task.publisherId === user.id || task.takerId === user.id);
+  const favorites = db.favorites.filter((fav) => {
+    if (fav.userId !== user.id) return false;
+    const item = itemByKind(fav.kind, fav.id);
+    return item && canBrowseItem(fav.kind, item, user);
+  });
+
+  return {
+    posts: db.listings.filter((item) => item.publisherId === user.id).length,
+    tasks: tasks.length,
+    favorites: favorites.length,
+    conversations: db.conversations.filter((conv) => conv.participants.includes(user.id)).length,
+    unreadMessages: unreadMessageCount(user),
+  };
+}
+
+function renderSummaryShortcut({ value, label, iconName, action, tab, className = "stat-card" }) {
+  const tabAttr = tab ? ` data-tab="${tab}"` : "";
+  return `
+    <button class="${className} summary-shortcut" type="button" data-action="${action}"${tabAttr}>
+      <span class="summary-shortcut-icon">${icon(iconName)}</span>
+      <span>
+        <strong>${value}</strong>
+        <span>${label}</span>
+      </span>
+    </button>
+  `;
+}
+
+function renderSummaryShortcuts(summary, className = "stat-card") {
+  return [
+    renderSummaryShortcut({ value: summary.posts, label: "我的帖子", iconName: "list", action: "profile-shortcut", tab: "posts", className }),
+    renderSummaryShortcut({ value: summary.tasks, label: "我的任务", iconName: "package-check", action: "profile-shortcut", tab: "tasks", className }),
+    renderSummaryShortcut({ value: summary.favorites, label: "收藏", iconName: "heart", action: "profile-shortcut", tab: "favorites", className }),
+    renderSummaryShortcut({ value: summary.conversations, label: "会话", iconName: "message-circle", action: "messages-shortcut", className }),
+  ].join("");
+}
+
+function viewSnapshot() {
+  return {
+    view: state.view,
+    activeChannel: state.activeChannel,
+    detail: state.detail ? { ...state.detail } : null,
+    query: state.query,
+    filters: { ...state.filters },
+    publishType: state.publishType,
+    profileTab: state.profileTab,
+    adminTab: state.adminTab,
+    selectedConversationId: state.selectedConversationId,
+    authMode: state.authMode,
+  };
+}
+
+function applyViewSnapshot(snapshot) {
+  state.view = snapshot.view;
+  state.activeChannel = snapshot.activeChannel;
+  state.detail = snapshot.detail ? { ...snapshot.detail } : null;
+  state.query = snapshot.query;
+  state.filters = { ...snapshot.filters };
+  state.publishType = snapshot.publishType;
+  state.profileTab = snapshot.profileTab;
+  state.adminTab = snapshot.adminTab;
+  state.selectedConversationId = snapshot.selectedConversationId;
+  state.authMode = snapshot.authMode;
+}
+
+function sameViewSnapshot(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function rememberViewSnapshot(snapshot) {
+  const last = viewHistory[viewHistory.length - 1];
+  if (last && sameViewSnapshot(last, snapshot)) return;
+  viewHistory.push(snapshot);
+  if (viewHistory.length > MAX_VIEW_HISTORY) viewHistory.shift();
+}
+
+function canGoBack() {
+  return viewHistory.length > 0;
+}
+
+function goBack() {
+  const previous = viewHistory.pop();
+  if (!previous) {
+    toast("没有上一处页面");
+    return;
+  }
+  applyViewSnapshot(previous);
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function shouldRefreshSummaryData() {
+  const user = currentUser();
+  const modalOpen = Boolean($("#modalRoot")?.innerHTML.trim());
+  if (!user || modalOpen || document.hidden) return false;
+  return state.view === "home" || (state.view === "profile" && state.profileTab === "overview");
+}
+
+async function refreshSummaryData(force = false) {
+  if (summaryRefreshPending) return;
+  if (!force && !shouldRefreshSummaryData()) return;
+  summaryRefreshPending = true;
+  try {
+    await syncDbFromServer();
+    if (currentUser()) render();
+  } finally {
+    summaryRefreshPending = false;
+  }
+}
+
+function startSummaryAutoRefresh() {
+  if (summaryRefreshTimer) return;
+  summaryRefreshTimer = window.setInterval(() => refreshSummaryData(), SUMMARY_REFRESH_INTERVAL);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshSummaryData();
+  });
 }
 
 function ensureAuth(options = {}) {
@@ -402,10 +517,8 @@ function ensureAuth(options = {}) {
     return false;
   }
   if (options.verified && user.verifyStatus !== "已认证") {
-    state.view = "profile";
-    state.profileTab = "verification";
+    setView("profile", { profileTab: "verification" });
     toast("需要先完成校园认证");
-    render();
     return false;
   }
   if (user.status !== "正常") {
@@ -416,13 +529,18 @@ function ensureAuth(options = {}) {
 }
 
 function setView(view, options = {}) {
+  const previous = viewSnapshot();
   state.view = view;
-  if (options.channel) state.activeChannel = options.channel;
-  if (options.detail) state.detail = options.detail;
-  if (options.profileTab) state.profileTab = options.profileTab;
-  if (options.adminTab) state.adminTab = options.adminTab;
+  if (Object.hasOwn(options, "channel")) state.activeChannel = options.channel;
+  if (Object.hasOwn(options, "detail")) state.detail = options.detail;
+  if (Object.hasOwn(options, "profileTab")) state.profileTab = options.profileTab;
+  if (Object.hasOwn(options, "adminTab")) state.adminTab = options.adminTab;
+  if (Object.hasOwn(options, "selectedConversationId")) state.selectedConversationId = options.selectedConversationId;
+  const next = viewSnapshot();
+  if (!options.replace && !sameViewSnapshot(previous, next)) rememberViewSnapshot(previous);
   render();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  refreshSummaryData();
 }
 
 function resetFilters() {
@@ -439,6 +557,12 @@ function renderHeader() {
   const channelNav = $("#channelNav");
   const user = currentUser();
   const unreadTotal = unreadMessageCount(user);
+  const backButton = $("#backButton");
+
+  if (backButton) {
+    backButton.classList.toggle("hide", !canGoBack());
+    backButton.title = canGoBack() ? "返回上一处" : "暂无上一处页面";
+  }
 
   channelNav.innerHTML = [
     `<button class="nav-pill ${state.activeChannel === "全部" ? "active" : ""}" type="button" data-action="browse" data-channel="全部">全部</button>`,
@@ -530,10 +654,7 @@ function renderHome() {
     .slice()
     .sort((a, b) => b.reward - a.reward)
     .slice(0, 3);
-  const myListings = user ? db.listings.filter((item) => item.publisherId === user.id) : [];
-  const myTasks = user ? db.tasks.filter((task) => task.publisherId === user.id || task.takerId === user.id) : [];
-  const myFavorites = user ? db.favorites.filter((fav) => fav.userId === user.id) : [];
-  const unreadConversations = user ? db.conversations.filter((conv) => conv.participants.includes(user.id)).length : 0;
+  const summary = profileSummaryFor(user);
   const completedCount = db.tasks.filter((task) => task.status === "已完成").length + db.listings.filter((listing) => listing.status === "已完成").length;
 
   return `
@@ -566,10 +687,7 @@ function renderHome() {
             ${statusBadge(user?.verifyStatus || "未认证")}
           </div>
           <div class="home-mini-stats">
-            <div><strong>${myListings.length}</strong><span>我的发布</span></div>
-            <div><strong>${myTasks.length}</strong><span>相关任务</span></div>
-            <div><strong>${myFavorites.length}</strong><span>收藏</span></div>
-            <div><strong>${unreadConversations}</strong><span>会话</span></div>
+            ${renderSummaryShortcuts(summary, "home-mini-stat")}
           </div>
         </div>
         <div class="side-panel">
@@ -1413,17 +1531,11 @@ function renderProfileTab(user) {
 }
 
 function renderProfileOverview(user) {
-  const myListings = db.listings.filter((item) => item.publisherId === user.id);
-  const publishedTasks = db.tasks.filter((task) => task.publisherId === user.id);
-  const takenTasks = db.tasks.filter((task) => task.takerId === user.id);
-  const favorites = db.favorites.filter((fav) => fav.userId === user.id);
+  const summary = profileSummaryFor(user);
   return `
     <h2>账号总览</h2>
     <div class="stats-grid">
-      <div class="stat-card"><strong>${myListings.length}</strong><span>我的帖子</span></div>
-      <div class="stat-card"><strong>${publishedTasks.length}</strong><span>我发布的任务</span></div>
-      <div class="stat-card"><strong>${takenTasks.length}</strong><span>我接单的任务</span></div>
-      <div class="stat-card"><strong>${favorites.length}</strong><span>收藏</span></div>
+      ${renderSummaryShortcuts(summary)}
     </div>
     <div class="divider"></div>
     <h3>信用标签</h3>
@@ -1569,101 +1681,6 @@ function renderSettings(user) {
     </div>
     <div class="divider"></div>
     <p class="small-text">默认隐藏手机号、学号、真实姓名等敏感信息；账号资料和后台审核数据由后端持久化保存。</p>
-  `;
-}
-
-function renderMessages() {
-  const user = currentUser();
-  if (!user) return renderAuthRequired("登录并认证后可使用站内消息。");
-  if (user.verifyStatus !== "已认证") {
-    return renderAuthRequired("完成校园认证后可使用站内消息。", {
-      action: "go-verification",
-      icon: "badge-check",
-      label: "去认证",
-    });
-  }
-
-  const conversations = conversationsForUser(user);
-  if ((!state.selectedConversationId || !conversations.some((conv) => conv.id === state.selectedConversationId)) && conversations.length) {
-    state.selectedConversationId = conversations[0].id;
-  }
-  const selected = conversations.find((conv) => conv.id === state.selectedConversationId);
-
-  return `
-    <section class="page-head">
-      <div>
-        <p class="eyebrow">消息中心</p>
-        <h1>站内沟通</h1>
-        <p class="lead">会话中展示关联信息卡片，默认隐藏手机号、微信号和学号等敏感信息。</p>
-      </div>
-    </section>
-
-    <section class="messages-layout">
-      <aside class="section-panel message-list">
-        ${conversations.length ? conversations.map((conv) => renderConversationButton(conv, user)).join("") : renderInlineEmpty("暂无会话，先去详情页联系发布者。")}
-      </aside>
-      <div class="section-panel chat-window">
-        ${selected ? renderChat(selected, user) : `<div class="empty-state"><p>请选择一个会话。</p></div>`}
-      </div>
-    </section>
-  `;
-}
-
-function renderConversationButton(conv, user) {
-  const peerId = conv.participants.find((id) => id !== user.id);
-  const peer = userById(peerId);
-  const item = itemByKind(conv.kind, conv.itemId);
-  const canOpenItem = item && canBrowseItem(conv.kind, item, user);
-  const last = conv.messages[conv.messages.length - 1];
-  const unreadCount = unreadCountForConversation(conv, user);
-  const title = canOpenItem ? item.title : unavailableItemText(conv.kind);
-  return `
-    <button class="conversation-button ${state.selectedConversationId === conv.id ? "active" : ""}" type="button" data-action="conversation" data-id="${conv.id}">
-      <span class="conversation-avatar">${escapeHtml(peer.nickname.slice(0, 1))}</span>
-      <span class="conversation-content">
-        <strong>${escapeHtml(peer.nickname)}</strong>
-        <span class="small-text">${escapeHtml(title)}</span>
-        <span class="small-text conversation-preview">${escapeHtml(last?.text || "暂无消息")}</span>
-      </span>
-      <span class="conversation-meta">
-        <span class="meta">${dateText(conv.updatedAt)}</span>
-        ${unreadCount ? `<span class="unread-badge conversation-unread">${escapeHtml(unreadCountLabel(unreadCount))}</span>` : ""}
-      </span>
-    </button>
-  `;
-}
-
-function renderChat(conv, user) {
-  const item = itemByKind(conv.kind, conv.itemId);
-  const canOpenItem = item && canBrowseItem(conv.kind, item, user);
-  return `
-    <div class="chat-card">
-      <div class="badge-row">
-        <span class="badge info">${conv.kind === "task" ? "任务" : "帖子"}</span>
-        ${item ? statusBadge(item.status) : ""}
-      </div>
-      <h3>${escapeHtml(canOpenItem ? item.title : item ? unavailableItemText(conv.kind) : "关联信息已不存在")}</h3>
-      <button class="table-action" type="button" ${canOpenItem ? `data-action="detail" data-kind="${conv.kind}" data-id="${conv.itemId}"` : "disabled"}>${icon("eye")}查看关联信息</button>
-    </div>
-    <div class="chat-messages">
-      ${conv.messages.map((message) => `
-        <div class="bubble ${message.senderId === user.id ? "mine" : ""}">
-          <div>${escapeHtml(message.text)}</div>
-          <small>${escapeHtml(userById(message.senderId).nickname)} · ${dateText(message.createdAt)}</small>
-        </div>
-      `).join("")}
-    </div>
-    <form class="chat-form" data-form="message">
-      <input type="hidden" name="conversationId" value="${conv.id}" />
-      <div class="filter-row">
-        ${QUICK_MESSAGES.map((text) => `<button class="quick-phrase" type="button" data-action="quick-message" data-text="${escapeHtml(text)}">${escapeHtml(text)}</button>`).join("")}
-      </div>
-      <div class="field">
-        <label for="messageText">消息</label>
-        <textarea id="messageText" name="text" required placeholder="输入文本消息。涉及提前转账、脱离平台、高风险物品时请谨慎处理。"></textarea>
-      </div>
-      <button class="primary-button" type="submit">${icon("send")}发送</button>
-    </form>
   `;
 }
 
@@ -2078,9 +2095,12 @@ function handleClick(event) {
   const target = event.target.closest("button, a");
   if (!target) return;
 
+  if (target.id === "backButton") {
+    goBack();
+    return;
+  }
   if (target.id === "brandButton") {
-    state.activeChannel = "全部";
-    setView("home");
+    setView("home", { channel: "全部" });
     return;
   }
   if (target.id === "publishButton") {
@@ -2102,15 +2122,17 @@ function handleClick(event) {
   if (!action) return;
 
   if (action === "browse") {
-    state.activeChannel = target.dataset.channel || "全部";
-    setView("browse");
+    setView("browse", { channel: target.dataset.channel || "全部" });
   } else if (action === "publish") {
     setView("publish");
   } else if (action === "go-verification") {
-    state.profileTab = "verification";
-    setView("profile");
+    setView("profile", { profileTab: "verification" });
   } else if (action === "admin") {
     setView("admin");
+  } else if (action === "profile-shortcut") {
+    setView("profile", { profileTab: target.dataset.tab || "overview" });
+  } else if (action === "messages-shortcut") {
+    setView("messages");
   } else if (action === "mobile-view") {
     setView(target.dataset.view);
   } else if (action === "detail") {
@@ -2201,8 +2223,7 @@ function handleInput(event) {
 function handleKeydown(event) {
   if (event.target.id === "globalSearch" && event.key === "Enter") {
     event.preventDefault();
-    state.activeChannel = "全部";
-    setView("browse");
+    setView("browse", { channel: "全部" });
   }
 }
 
@@ -2240,12 +2261,14 @@ async function login(data) {
     currentUserId = user.id;
     saveSession();
 
-    state.view = user.role === "admin" ? "admin" : "home";
-    state.profileTab = "overview";
-    state.adminTab = "dashboard";
+    viewHistory.length = 0;
     state.authMode = "login";
     toast(`欢迎回来，${user.nickname}`);
-    render();
+    setView(user.role === "admin" ? "admin" : "home", {
+      profileTab: "overview",
+      adminTab: "dashboard",
+      replace: true,
+    });
   } catch (error) {
     toast(error.message || "登录失败");
   }
@@ -2281,11 +2304,10 @@ async function register(data) {
     currentUserId = user.id;
     saveSession();
 
-    state.view = "profile";
-    state.profileTab = "verification";
+    viewHistory.length = 0;
     state.authMode = "login";
     toast("注册成功，请提交校园认证");
-    render();
+    setView("profile", { profileTab: "verification", replace: true });
   } catch (error) {
     toast(error.message || "注册失败");
   }
@@ -2303,13 +2325,15 @@ async function logout() {
   currentUserId = 0;
   saveSession();
   closeModal();
-  state.view = "home";
-  state.activeChannel = "全部";
-  state.detail = null;
-  state.selectedConversationId = null;
+  viewHistory.length = 0;
   state.authMode = "login";
   toast("已退出登录");
-  render();
+  setView("home", {
+    channel: "全部",
+    detail: null,
+    selectedConversationId: null,
+    replace: true,
+  });
 }
 
 async function submitPublish(data, form) {
@@ -2367,10 +2391,8 @@ async function submitPublish(data, form) {
     db.tasks.unshift(task);
     saveDb();
     form.reset();
-    state.detail = { kind: "task", id: task.id };
-    state.view = "detail";
     toast(risk.review.length ? "任务已进入人工复核" : "任务发布成功");
-    render();
+    setView("detail", { detail: { kind: "task", id: task.id } });
     return;
   }
 
@@ -2403,10 +2425,8 @@ async function submitPublish(data, form) {
   db.listings.unshift(listing);
   saveDb();
   form.reset();
-  state.detail = { kind: "listing", id: listing.id };
-  state.view = "detail";
   toast(risk.review.length ? "信息已提交审核" : "发布成功");
-  render();
+  setView("detail", { detail: { kind: "listing", id: listing.id } });
 }
 
 async function resolvePublishImage(file, channel) {
@@ -2503,30 +2523,6 @@ function withdrawReport(id) {
   render();
 }
 
-function sendMessage(data, form) {
-  if (!ensureAuth({ verified: true })) return;
-  const conv = db.conversations.find((item) => item.id === Number(data.conversationId));
-  if (!conv) return;
-  const user = currentUser();
-  const text = data.text.trim();
-  if (!text) {
-    toast("请输入消息内容");
-    return;
-  }
-  const createdAt = new Date().toISOString();
-  conv.messages.push({
-    senderId: user.id,
-    text,
-    createdAt,
-  });
-  conv.updatedAt = createdAt;
-  conv.readBy = { ...(conv.readBy || {}), [user.id]: createdAt };
-  saveDb();
-  form.reset();
-  render();
-  toast("消息已发送");
-}
-
 function addCategory(data, form) {
   if (!ensureAuth({ admin: true })) return;
   db.categories[data.channel] = db.categories[data.channel] || [];
@@ -2609,51 +2605,6 @@ function toggleFavorite(kind, id) {
   }
   saveDb();
   render();
-}
-
-function startConversation(kind, id) {
-  if (!ensureAuth({ verified: true })) return;
-  const item = itemByKind(kind, id);
-  if (!item) return;
-  const user = currentUser();
-  if (!canBrowseItem(kind, item, user)) {
-    toast(unavailableItemText(kind));
-    return;
-  }
-  if (item.publisherId === user.id) {
-    toast("不能联系自己发布的信息");
-    return;
-  }
-  const participantIds = [user.id, item.publisherId].sort((a, b) => a - b);
-  let conv = db.conversations.find(
-    (row) =>
-      row.kind === kind &&
-      row.itemId === Number(id) &&
-      row.participants.slice().sort((a, b) => a - b).join(",") === participantIds.join(","),
-  );
-  const isNewConversation = !conv;
-  if (!conv) {
-    conv = {
-      id: nextId(db.conversations),
-      participants: participantIds,
-      kind,
-      itemId: Number(id),
-      updatedAt: new Date().toISOString(),
-      readBy: { [user.id]: new Date().toISOString() },
-      messages: [
-        {
-          senderId: user.id,
-          text: kind === "task" ? "你好，我想了解这个任务的细节。" : "你好，这条信息还有效吗？",
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    };
-    db.conversations.unshift(conv);
-    saveDb();
-  }
-  state.selectedConversationId = conv.id;
-  setView("messages");
-  toast(isNewConversation ? "已创建会话，可继续发送消息" : "已进入已有会话");
 }
 
 function updateListingStatus(id, status) {
@@ -2834,7 +2785,9 @@ async function init() {
   document.addEventListener("submit", handleSubmit);
   document.addEventListener("input", handleInput);
   document.addEventListener("keydown", handleKeydown);
+  startSummaryAutoRefresh();
   render();
+  refreshSummaryData();
 }
 
 init();

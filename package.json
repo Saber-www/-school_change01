@@ -10,7 +10,7 @@
     "build": "vite build",
     "serve": "node server/index.js",
     "start": "npm run build && node server/index.js",
-    "check": "node --check src/legacy/constants.js && node --check src/legacy/domUtils.js && node --check src/legacy/seedData.js && node --check src/legacy/campusMarketController.js && node --check server/index.js && node --check server/config/env.js && node --check server/data/store.js && node --check server/routes/api.js && npm run build"
+    "check": "node --check src/legacy/constants.js && node --check src/legacy/domUtils.js && node --check src/legacy/seedData.js && node --check src/legacy/messagesFeature.js && node --check src/legacy/campusMarketController.js && node --check server/index.js && node --check server/config/env.js && node --check server/data/store.js && node --check server/routes/api.js && npm run build"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
