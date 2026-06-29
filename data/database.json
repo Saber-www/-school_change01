@@ -1,0 +1,856 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "account": "linxia",
+      "password": "LinXia@2026",
+      "nickname": "林夏",
+      "phone": "13800001111",
+      "email": "linxia@campus.edu",
+      "campus": "主校区",
+      "verifyStatus": "已认证",
+      "creditScore": 92,
+      "status": "正常",
+      "role": "user",
+      "createdAt": "2026-06-20T08:00:00.000Z",
+      "updatedAt": "2026-06-20T08:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "account": "runner",
+      "password": "Runner@2026",
+      "nickname": "周然",
+      "phone": "13800002222",
+      "email": "runner@campus.edu",
+      "campus": "东校区",
+      "verifyStatus": "已认证",
+      "creditScore": 88,
+      "status": "正常",
+      "role": "user",
+      "createdAt": "2026-06-21T09:00:00.000Z",
+      "updatedAt": "2026-06-21T09:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "account": "newbie",
+      "password": "Newbie@2026",
+      "nickname": "新同学",
+      "phone": "13800003333",
+      "email": "newbie@campus.edu",
+      "campus": "西校区",
+      "verifyStatus": "未认证",
+      "creditScore": 60,
+      "status": "正常",
+      "role": "user",
+      "createdAt": "2026-06-22T10:00:00.000Z",
+      "updatedAt": "2026-06-22T10:00:00.000Z"
+    },
+    {
+      "id": 99,
+      "account": "admin",
+      "password": "Admin@2026",
+      "nickname": "管理员",
+      "phone": "13800009999",
+      "email": "admin@campus.edu",
+      "campus": "主校区",
+      "verifyStatus": "已认证",
+      "creditScore": 100,
+      "status": "正常",
+      "role": "admin",
+      "createdAt": "2026-06-18T08:00:00.000Z",
+      "updatedAt": "2026-06-18T08:00:00.000Z"
+    }
+  ],
+  "verifications": [
+    {
+      "id": 1,
+      "userId": 1,
+      "realName": "林夏",
+      "studentNo": "20240001",
+      "method": "校园邮箱",
+      "proofUrl": "linxia@campus.edu",
+      "status": "通过",
+      "rejectReason": "",
+      "reviewedBy": 99,
+      "reviewedAt": "2026-06-20T09:00:00.000Z",
+      "createdAt": "2026-06-20T08:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "userId": 2,
+      "realName": "周然",
+      "studentNo": "20240002",
+      "method": "校园邮箱",
+      "proofUrl": "runner@campus.edu",
+      "status": "通过",
+      "rejectReason": "",
+      "reviewedBy": 99,
+      "reviewedAt": "2026-06-21T10:00:00.000Z",
+      "createdAt": "2026-06-21T09:30:00.000Z"
+    }
+  ],
+  "listings": [
+    {
+      "id": 1,
+      "publisherId": 1,
+      "channel": "闲置转让",
+      "category": "数码电子",
+      "title": "九成新 iPad Air 64G 带保护壳",
+      "description": "上课记笔记用得比较多，屏幕无划痕，电池正常。校内当面验机，配保护壳和电容笔。",
+      "price": 1880,
+      "originalPrice": 3299,
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "九成新",
+      "campus": "主校区",
+      "locationText": "图书馆一楼大厅",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 126,
+      "favoriteCount": 2,
+      "createdAt": "2026-06-26T09:20:00.000Z",
+      "updatedAt": "2026-06-26T09:20:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "可验机",
+        "配件齐全",
+        "同校交易"
+      ]
+    },
+    {
+      "id": 2,
+      "publisherId": 2,
+      "channel": "闲置转让",
+      "category": "教材资料",
+      "title": "高数与线代复习资料打包",
+      "description": "包含教材、习题册和自己整理的重点页，适合期末复习。资料有标注，不影响阅读。",
+      "price": 45,
+      "originalPrice": 120,
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "八成新",
+      "campus": "东校区",
+      "locationText": "东区食堂门口",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 88,
+      "favoriteCount": 1,
+      "createdAt": "2026-06-25T13:40:00.000Z",
+      "updatedAt": "2026-06-25T13:40:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "期末复习",
+        "可小刀"
+      ]
+    },
+    {
+      "id": 3,
+      "publisherId": 1,
+      "channel": "求购交换",
+      "category": "宿舍用品",
+      "title": "求购小尺寸折叠桌",
+      "description": "希望桌面宽度 60cm 左右，宿舍床边可以用。价格合适可今天自取。",
+      "price": "",
+      "originalPrice": "",
+      "budgetMin": 30,
+      "budgetMax": 80,
+      "conditionLevel": "不限",
+      "campus": "主校区",
+      "locationText": "北苑宿舍区",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 42,
+      "favoriteCount": 0,
+      "createdAt": "2026-06-24T16:10:00.000Z",
+      "updatedAt": "2026-06-24T16:10:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "可自取",
+        "宿舍用品"
+      ]
+    },
+    {
+      "id": 4,
+      "publisherId": 2,
+      "channel": "失物招领",
+      "category": "校园卡",
+      "title": "拾到一张校园卡",
+      "description": "在西操场看台附近拾到，卡面姓陈。请描述完整姓名和学院后领取。",
+      "price": "",
+      "originalPrice": "",
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "不限",
+      "campus": "西校区",
+      "locationText": "西操场看台",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 65,
+      "favoriteCount": 0,
+      "createdAt": "2026-06-27T07:55:00.000Z",
+      "updatedAt": "2026-06-27T07:55:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "招领",
+        "请核验信息"
+      ]
+    },
+    {
+      "id": 5,
+      "publisherId": 1,
+      "channel": "闲置转让",
+      "category": "生活用品",
+      "title": "毕业出收纳箱和床边挂篮",
+      "description": "两个大号收纳箱和一个床边挂篮，宿舍整理用，成色不错，主校区可当面看。",
+      "price": 28,
+      "originalPrice": 75,
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "八成新",
+      "campus": "主校区",
+      "locationText": "北苑 5 栋楼下",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 76,
+      "favoriteCount": 1,
+      "createdAt": "2026-06-28T08:40:00.000Z",
+      "updatedAt": "2026-06-28T08:40:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "毕业季",
+        "宿舍用品",
+        "可自取"
+      ]
+    },
+    {
+      "id": 6,
+      "publisherId": 2,
+      "channel": "闲置转让",
+      "category": "运动户外",
+      "title": "校园骑行折叠自行车",
+      "description": "通勤用折叠车，刹车和变速正常，适合校内代步，东校区看车。",
+      "price": 260,
+      "originalPrice": 699,
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "七成新",
+      "campus": "东校区",
+      "locationText": "东门车棚",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 112,
+      "favoriteCount": 4,
+      "createdAt": "2026-06-28T09:05:00.000Z",
+      "updatedAt": "2026-06-28T09:05:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1485965120184-e220f721d03e?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "自行车",
+        "校内代步",
+        "可试骑"
+      ]
+    },
+    {
+      "id": 7,
+      "publisherId": 3,
+      "channel": "求购交换",
+      "category": "数码配件",
+      "title": "求购 USB-C 扩展坞",
+      "description": "希望有 HDMI、USB-A 和网口，预算 60 到 120，可用教材或台灯交换。",
+      "price": "",
+      "originalPrice": "",
+      "budgetMin": 60,
+      "budgetMax": 120,
+      "conditionLevel": "不限",
+      "campus": "西校区",
+      "locationText": "西区教学楼",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 31,
+      "favoriteCount": 0,
+      "createdAt": "2026-06-28T09:25:00.000Z",
+      "updatedAt": "2026-06-28T09:25:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "求购",
+        "数码配件",
+        "可交换"
+      ]
+    },
+    {
+      "id": 8,
+      "publisherId": 1,
+      "channel": "求购交换",
+      "category": "课程资料",
+      "title": "求换数据库课程笔记",
+      "description": "想换数据库期末复习笔记，我可以提供 Web 前端复习资料和历年题整理。",
+      "price": "",
+      "originalPrice": "",
+      "budgetMin": 0,
+      "budgetMax": 30,
+      "conditionLevel": "不限",
+      "campus": "主校区",
+      "locationText": "信息楼自习区",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 58,
+      "favoriteCount": 2,
+      "createdAt": "2026-06-28T09:55:00.000Z",
+      "updatedAt": "2026-06-28T09:55:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "课程资料",
+        "可交换",
+        "期末"
+      ]
+    },
+    {
+      "id": 9,
+      "publisherId": 2,
+      "channel": "技能服务",
+      "category": "PPT/简历",
+      "title": "简历排版和答辩 PPT 美化",
+      "description": "可帮忙统一版式、调整配色、优化页面层级，适合课程展示和答辩前整理。",
+      "price": 25,
+      "originalPrice": "",
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "不限",
+      "campus": "东校区",
+      "locationText": "线上沟通或东区图书馆",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 94,
+      "favoriteCount": 3,
+      "createdAt": "2026-06-28T10:15:00.000Z",
+      "updatedAt": "2026-06-28T10:15:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "技能服务",
+        "PPT",
+        "简历"
+      ]
+    },
+    {
+      "id": 10,
+      "publisherId": 1,
+      "channel": "技能服务",
+      "category": "摄影修图",
+      "title": "社团活动拍照和基础修图",
+      "description": "周末可接社团活动记录，提供精选照片和基础调色，地点优先主校区。",
+      "price": 80,
+      "originalPrice": "",
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "不限",
+      "campus": "主校区",
+      "locationText": "主校区活动中心",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 67,
+      "favoriteCount": 2,
+      "createdAt": "2026-06-28T10:35:00.000Z",
+      "updatedAt": "2026-06-28T10:35:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "摄影",
+        "修图",
+        "社团活动"
+      ]
+    },
+    {
+      "id": 11,
+      "publisherId": 3,
+      "channel": "失物招领",
+      "category": "耳机数码",
+      "title": "丢失白色蓝牙耳机盒",
+      "description": "昨晚在南区操场到宿舍路上遗失白色耳机盒，盒子侧边有小贴纸，感谢联系。",
+      "price": "",
+      "originalPrice": "",
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "不限",
+      "campus": "南校区",
+      "locationText": "南区操场附近",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 40,
+      "favoriteCount": 0,
+      "createdAt": "2026-06-28T10:50:00.000Z",
+      "updatedAt": "2026-06-28T10:50:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "失物",
+        "耳机",
+        "南校区"
+      ]
+    },
+    {
+      "id": 12,
+      "publisherId": 2,
+      "channel": "失物招领",
+      "category": "钥匙",
+      "title": "拾到带蓝色挂件的钥匙",
+      "description": "在东区篮球场旁边拾到一串钥匙，有蓝色挂件，请描述挂件图案后领取。",
+      "price": "",
+      "originalPrice": "",
+      "budgetMin": "",
+      "budgetMax": "",
+      "conditionLevel": "不限",
+      "campus": "东校区",
+      "locationText": "东区篮球场",
+      "contactMode": "站内沟通",
+      "status": "展示中",
+      "viewCount": 29,
+      "favoriteCount": 0,
+      "createdAt": "2026-06-28T11:05:00.000Z",
+      "updatedAt": "2026-06-28T11:05:00.000Z",
+      "images": [
+        "https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&w=900&q=80"
+      ],
+      "tags": [
+        "招领",
+        "钥匙",
+        "东校区"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "publisherId": 1,
+      "takerId": null,
+      "channel": "跑腿代取",
+      "taskType": "代取快递",
+      "title": "帮取北门快递到图书馆",
+      "description": "两个小件，取件码站内沟通发送，送到图书馆一楼服务台附近。",
+      "pickupLocation": "北门菜鸟驿站",
+      "deliveryLocation": "图书馆一楼",
+      "campus": "主校区",
+      "reward": 8,
+      "deadlineAt": "2026-06-28T12:30:00.000Z",
+      "itemNote": "两个小件，不重",
+      "proofRequired": false,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T07:00:00.000Z",
+      "updatedAt": "2026-06-28T07:00:00.000Z",
+      "viewCount": 54,
+      "favoriteCount": 1,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T07:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "publisherId": 2,
+      "takerId": 1,
+      "channel": "校内送货",
+      "taskType": "资料递送",
+      "title": "东区资料送到主楼 302",
+      "description": "一袋打印资料，从东区文印店送到主楼 302，交给前台即可。",
+      "pickupLocation": "东区文印店",
+      "deliveryLocation": "主楼 302",
+      "campus": "东校区",
+      "reward": 12,
+      "deadlineAt": "2026-06-28T14:00:00.000Z",
+      "itemNote": "A4 资料袋",
+      "proofRequired": false,
+      "status": "进行中",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-27T15:00:00.000Z",
+      "updatedAt": "2026-06-28T08:10:00.000Z",
+      "viewCount": 73,
+      "favoriteCount": 0,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-27T15:00:00.000Z"
+        },
+        {
+          "text": "林夏 已接单并开始执行",
+          "time": "2026-06-28T08:10:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "publisherId": 1,
+      "takerId": 2,
+      "channel": "跑腿代取",
+      "taskType": "代买餐食",
+      "title": "南门带一份简餐到实验楼",
+      "description": "已经和店家确认，取餐后送到实验楼大厅。",
+      "pickupLocation": "南门轻食店",
+      "deliveryLocation": "实验楼大厅",
+      "campus": "南校区",
+      "reward": 10,
+      "deadlineAt": "2026-06-27T11:50:00.000Z",
+      "itemNote": "一份简餐",
+      "proofRequired": false,
+      "status": "已完成",
+      "cancelReason": "",
+      "completedAt": "2026-06-27T11:35:00.000Z",
+      "createdAt": "2026-06-27T10:30:00.000Z",
+      "updatedAt": "2026-06-27T11:35:00.000Z",
+      "viewCount": 39,
+      "favoriteCount": 0,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-27T10:30:00.000Z"
+        },
+        {
+          "text": "周然 已接单并开始执行",
+          "time": "2026-06-27T10:40:00.000Z"
+        },
+        {
+          "text": "接单者完成任务，流程闭环",
+          "time": "2026-06-27T11:35:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "publisherId": 3,
+      "takerId": null,
+      "channel": "跑腿代取",
+      "taskType": "代打印/取资料",
+      "title": "帮取西区文印店装订资料",
+      "description": "资料已经打印好，需要取回后送到西区教学楼 B203，纸袋不重。",
+      "pickupLocation": "西区文印店",
+      "deliveryLocation": "教学楼 B203",
+      "campus": "西校区",
+      "reward": 9,
+      "deadlineAt": "2026-06-28T18:30:00.000Z",
+      "itemNote": "一袋 A4 装订资料",
+      "proofRequired": false,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T09:10:00.000Z",
+      "updatedAt": "2026-06-28T09:10:00.000Z",
+      "viewCount": 46,
+      "favoriteCount": 1,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T09:10:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "publisherId": 1,
+      "takerId": null,
+      "channel": "跑腿代取",
+      "taskType": "代排队",
+      "title": "帮排队领取学院材料",
+      "description": "学院办公室下午发材料，需要排队领取后放到信息楼门卫处。",
+      "pickupLocation": "学院办公室 214",
+      "deliveryLocation": "信息楼门卫处",
+      "campus": "主校区",
+      "reward": 15,
+      "deadlineAt": "2026-06-28T17:00:00.000Z",
+      "itemNote": "需要带学生证核验",
+      "proofRequired": true,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T09:35:00.000Z",
+      "updatedAt": "2026-06-28T09:35:00.000Z",
+      "viewCount": 62,
+      "favoriteCount": 2,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T09:35:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "publisherId": 2,
+      "takerId": null,
+      "channel": "跑腿代取",
+      "taskType": "临时帮忙",
+      "title": "帮借实验室门禁卡送回",
+      "description": "同组同学在实验楼，需要把门禁卡从东区宿舍送到实验楼门口。",
+      "pickupLocation": "东区 2 栋宿舍楼下",
+      "deliveryLocation": "实验楼大厅",
+      "campus": "东校区",
+      "reward": 6,
+      "deadlineAt": "2026-06-28T19:00:00.000Z",
+      "itemNote": "一张门禁卡，需当面交接",
+      "proofRequired": false,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T10:05:00.000Z",
+      "updatedAt": "2026-06-28T10:05:00.000Z",
+      "viewCount": 33,
+      "favoriteCount": 0,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T10:05:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "publisherId": 3,
+      "takerId": null,
+      "channel": "校内送货",
+      "taskType": "代送物品",
+      "title": "南区书本送到主校区图书馆",
+      "description": "两本教材和一个文件夹，从南区宿舍送到主校区图书馆门口。",
+      "pickupLocation": "南区 6 栋宿舍",
+      "deliveryLocation": "主校区图书馆东门",
+      "campus": "南校区",
+      "reward": 14,
+      "deadlineAt": "2026-06-29T10:30:00.000Z",
+      "itemNote": "两本书和文件夹",
+      "proofRequired": false,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T10:25:00.000Z",
+      "updatedAt": "2026-06-28T10:25:00.000Z",
+      "viewCount": 51,
+      "favoriteCount": 1,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T10:25:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "publisherId": 1,
+      "takerId": null,
+      "channel": "校内送货",
+      "taskType": "搬运协助",
+      "title": "帮搬一箱宿舍用品到西区",
+      "description": "一个纸箱，约 6 公斤，从主校区宿舍楼送到西校区门口。",
+      "pickupLocation": "主校区北苑 5 栋",
+      "deliveryLocation": "西校区正门",
+      "campus": "主校区",
+      "reward": 18,
+      "deadlineAt": "2026-06-29T16:00:00.000Z",
+      "itemNote": "纸箱一只，不易碎",
+      "proofRequired": false,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T10:45:00.000Z",
+      "updatedAt": "2026-06-28T10:45:00.000Z",
+      "viewCount": 44,
+      "favoriteCount": 0,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T10:45:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "publisherId": 2,
+      "takerId": null,
+      "channel": "校内送货",
+      "taskType": "易碎物品",
+      "title": "帮送实验模型到主楼",
+      "description": "一个泡沫箱装的课程模型，轻但需要小心，从东区实验室送到主楼 105。",
+      "pickupLocation": "东区实验室 1 楼",
+      "deliveryLocation": "主楼 105",
+      "campus": "东校区",
+      "reward": 16,
+      "deadlineAt": "2026-06-29T09:20:00.000Z",
+      "itemNote": "泡沫箱，轻拿轻放",
+      "proofRequired": true,
+      "status": "待接单",
+      "cancelReason": "",
+      "completedAt": "",
+      "createdAt": "2026-06-28T11:15:00.000Z",
+      "updatedAt": "2026-06-28T11:15:00.000Z",
+      "viewCount": 37,
+      "favoriteCount": 1,
+      "timeline": [
+        {
+          "text": "任务发布，等待认证用户接单",
+          "time": "2026-06-28T11:15:00.000Z"
+        }
+      ]
+    }
+  ],
+  "favorites": [
+    {
+      "userId": 1,
+      "kind": "listing",
+      "id": 2,
+      "createdAt": "2026-06-27T12:00:00.000Z"
+    },
+    {
+      "userId": 2,
+      "kind": "listing",
+      "id": 1,
+      "createdAt": "2026-06-27T13:00:00.000Z"
+    },
+    {
+      "userId": 2,
+      "kind": "task",
+      "id": 1,
+      "createdAt": "2026-06-28T07:20:00.000Z"
+    }
+  ],
+  "browseHistory": [],
+  "conversations": [
+    {
+      "id": 1,
+      "participants": [
+        1,
+        2
+      ],
+      "kind": "listing",
+      "itemId": 2,
+      "updatedAt": "2026-06-27T13:15:00.000Z",
+      "messages": [
+        {
+          "senderId": 1,
+          "text": "你好，资料还在吗？",
+          "createdAt": "2026-06-27T13:02:00.000Z"
+        },
+        {
+          "senderId": 2,
+          "text": "还在，可以东区食堂门口看。",
+          "createdAt": "2026-06-27T13:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "participants": [
+        1,
+        2
+      ],
+      "kind": "task",
+      "itemId": 2,
+      "updatedAt": "2026-06-28T08:12:00.000Z",
+      "messages": [
+        {
+          "senderId": 1,
+          "text": "我已经接单，预计 20 分钟送到。",
+          "createdAt": "2026-06-28T08:12:00.000Z"
+        }
+      ]
+    }
+  ],
+  "reports": [],
+  "reviews": [],
+  "notifications": [],
+  "announcements": [
+    {
+      "id": 1,
+      "title": "请优先使用站内沟通",
+      "content": "交易、跑腿和失物招领请先通过站内消息确认细节，避免提前转账。",
+      "level": "安全",
+      "createdAt": "2026-06-25T08:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "title": "毕业季闲置专区开放",
+      "content": "教材、宿舍用品、数码配件都可以发布到闲置转让频道。",
+      "level": "公告",
+      "createdAt": "2026-06-24T08:00:00.000Z"
+    }
+  ],
+  "categories": {
+    "闲置转让": [
+      "教材资料",
+      "数码电子",
+      "生活用品",
+      "服饰鞋包",
+      "运动户外",
+      "家具小电器",
+      "票券卡券",
+      "乐器文具",
+      "其他闲置"
+    ],
+    "求购交换": [
+      "教材资料",
+      "宿舍用品",
+      "数码配件",
+      "课程资料",
+      "可交换",
+      "可租借"
+    ],
+    "跑腿代取": [
+      "代取快递",
+      "代买餐食",
+      "代打印/取资料",
+      "代排队",
+      "临时帮忙"
+    ],
+    "校内送货": [
+      "代送物品",
+      "搬运协助",
+      "跨校区送达",
+      "易碎物品",
+      "资料递送"
+    ],
+    "技能服务": [
+      "学习辅导",
+      "资料整理",
+      "PPT/简历",
+      "摄影修图",
+      "电脑维修",
+      "运动陪练",
+      "其他互助"
+    ],
+    "失物招领": [
+      "失物",
+      "招领",
+      "校园卡",
+      "钥匙",
+      "耳机数码",
+      "书本资料",
+      "其他物品"
+    ]
+  },
+  "auditLogs": [
+    {
+      "id": 1,
+      "adminId": 99,
+      "text": "初始化演示账号与基础内容",
+      "createdAt": "2026-06-20T08:00:00.000Z"
+    }
+  ]
+}

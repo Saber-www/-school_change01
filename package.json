@@ -1,0 +1,28 @@
+{
+  "name": "campus-light-market",
+  "version": "3.0.0",
+  "private": true,
+  "description": "校园轻集市 Vue 用户端、Express API 与 MySQL 数据存储项目",
+  "scripts": {
+    "dev": "PORT=3003 NODE_ENV=development node server/index.js",
+    "dev:client": "vite --host 127.0.0.1 --port 5173",
+    "dev:server": "PORT=3003 NODE_ENV=development node server/index.js",
+    "build": "vite build",
+    "serve": "node server/index.js",
+    "start": "npm run build && node server/index.js",
+    "check": "node --check src/legacy/constants.js && node --check src/legacy/domUtils.js && node --check src/legacy/seedData.js && node --check src/legacy/campusMarketController.js && node --check server/index.js && node --check server/config/env.js && node --check server/data/store.js && node --check server/routes/api.js && npm run build"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "mysql2": "^3.15.3",
+    "vite": "^8.1.0",
+    "vue": "^3.5.22"
+  }
+}
