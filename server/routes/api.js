@@ -69,8 +69,7 @@ function createApiRouter(store) {
 
   function canReadListing(user, listing) {
     if (!listing) return false;
-    if (PUBLIC_LISTING_STATUSES.includes(listing.status)) return true;
-    return Boolean(user && (user.role === "admin" || listing.publisherId === user.id));
+    return PUBLIC_LISTING_STATUSES.includes(listing.status);
   }
 
   function matchesQuery(item, query) {

@@ -112,7 +112,7 @@ function saveDb() {
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
-  if (serverAvailable) {
+  if (serverAvailable && authToken) {
     syncDbToServer();
   }
 }
@@ -295,7 +295,11 @@ function canManageItem(kind, item, user = currentUser()) {
 function canBrowseItem(kind, item, user = currentUser()) {
   if (!item) return false;
   if (kind === "task") return true;
-  return PUBLIC_LISTING_STATUSES.includes(item.status) || canManageItem(kind, item, user);
+  return PUBLIC_LISTING_STATUSES.includes(item.status);
+}
+
+function canViewOwnListingInProfile(kind, item, user = currentUser()) {
+  return Boolean(kind === "listing" && item && user && item.publisherId === user.id);
 }
 
 function unavailableItemText(kind = "listing") {
@@ -479,10 +483,11 @@ function goBack() {
 }
 
 function shouldRefreshSummaryData() {
-  const user = currentUser();
   const modalOpen = Boolean($("#modalRoot")?.innerHTML.trim());
-  if (!user || modalOpen || document.hidden) return false;
-  return state.view === "home" || (state.view === "profile" && state.profileTab === "overview");
+  const activeTag = document.activeElement?.tagName;
+  const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(activeTag);
+  if (modalOpen || document.hidden || editing) return false;
+  return state.view !== "publish";
 }
 
 async function refreshSummaryData(force = false) {
@@ -773,10 +778,14 @@ function renderInlineEmpty(text) {
   return `<div class="empty-state" style="grid-column: 1 / -1;"><p>${escapeHtml(text)}</p></div>`;
 }
 
-function renderListingCard(item, row = false) {
+function renderListingCard(item, row = false, options = {}) {
   const publisher = userById(item.publisherId);
   const user = currentUser();
   const canRelist = user?.id === item.publisherId && item.status === "已下架";
+  const canOpenOwnListing = options.ownerAccess && canViewOwnListingInProfile("listing", item, user);
+  const canEdit = canOpenOwnListing;
+  const detailAction = canOpenOwnListing ? "owner-detail" : "detail";
+  const canShowFavorite = canBrowseItem("listing", item, user);
   const priceText =
     item.channel === "求购交换"
       ? `${money(item.budgetMin, "预算")} - ${money(item.budgetMax, "面议")}`
@@ -792,7 +801,7 @@ function renderListingCard(item, row = false) {
           ${statusBadge(item.status)}
         </div>
         <h3 class="card-title">
-          <button type="button" data-action="detail" data-kind="listing" data-id="${item.id}">
+          <button type="button" data-action="${detailAction}" data-kind="listing" data-id="${item.id}">
             ${escapeHtml(item.title)}
           </button>
         </h3>
@@ -805,9 +814,10 @@ function renderListingCard(item, row = false) {
           ${item.tags.map((tag) => `<span class="badge">${escapeHtml(tag)}</span>`).join("")}
         </div>
         <div class="card-actions">
-          <button class="secondary-button" type="button" data-action="detail" data-kind="listing" data-id="${item.id}">${icon("eye")}详情</button>
+          <button class="secondary-button" type="button" data-action="${detailAction}" data-kind="listing" data-id="${item.id}">${icon("eye")}详情</button>
+          ${canEdit ? `<button class="ghost-button" type="button" data-action="edit-listing" data-id="${item.id}">${icon("pencil")}修改</button>` : ""}
           ${canRelist ? `<button class="primary-button" type="button" data-action="listing-status" data-status="展示中" data-id="${item.id}">${icon("rotate-ccw")}重新上架</button>` : ""}
-          ${renderFavoriteButton("listing", item.id, item.favoriteCount)}
+          ${canShowFavorite ? renderFavoriteButton("listing", item.id, item.favoriteCount) : ""}
         </div>
         <p class="meta">${escapeHtml(publisher.nickname)} · ${escapeHtml(item.campus)} · ${dateText(item.createdAt)} · 浏览 ${item.viewCount}</p>
       </div>
@@ -1004,7 +1014,8 @@ function renderDetail() {
       </section>
     `;
   }
-  if (!canBrowseItem(state.detail.kind, item)) {
+  const canRenderOwnerDetail = state.detail.ownerAccess && canViewOwnListingInProfile(state.detail.kind, item);
+  if (!canBrowseItem(state.detail.kind, item) && !canRenderOwnerDetail) {
     return `
       <section class="empty-state">
         <div>
@@ -1028,7 +1039,11 @@ function renderDetail() {
         <h1>${escapeHtml(item.title)}</h1>
         <p class="lead">${escapeHtml(titleMeta)}</p>
       </div>
-      <button class="ghost-button" type="button" data-action="browse" data-channel="${item.channel}">${icon("arrow-left")}返回频道</button>
+      ${
+        canRenderOwnerDetail
+          ? `<button class="ghost-button" type="button" data-action="profile-shortcut" data-tab="posts">${icon("arrow-left")}返回我的发布</button>`
+          : `<button class="ghost-button" type="button" data-action="browse" data-channel="${item.channel}">${icon("arrow-left")}返回频道</button>`
+      }
     </section>
 
     <section class="detail-layout">
@@ -1186,21 +1201,30 @@ function renderListingActions(item) {
     return `<p class="small-text">发布者可在此标记成交或下架。</p>`;
   }
 
+  const editButton = `<button class="ghost-button" type="button" data-action="edit-listing" data-id="${item.id}">${icon("pencil")}修改信息</button>`;
+
   if (item.status === "已下架" || item.status === "已完成") {
     const label = item.status === "已完成" ? "撤回成交并恢复展示" : "重新上架";
     return `
       <div class="button-row">
+        ${editButton}
         <button class="primary-button" type="button" data-action="listing-status" data-status="展示中" data-id="${item.id}">${icon("rotate-ccw")}${label}</button>
       </div>
     `;
   }
 
   if (item.status === "待审核") {
-    return `<p class="small-text">当前状态不可直接变更，待审核内容需由管理员处理。</p>`;
+    return `
+      <div class="button-row">
+        ${editButton}
+        <p class="small-text">当前状态不可直接变更，待审核内容需由管理员处理。</p>
+      </div>
+    `;
   }
 
   return `
     <div class="button-row">
+      ${editButton}
       <button class="secondary-button" type="button" data-action="listing-status" data-status="已完成" data-id="${item.id}">${icon("check-circle-2")}标记成交</button>
       <button class="ghost-button" type="button" data-action="listing-status" data-status="已下架" data-id="${item.id}">${icon("archive")}下架</button>
     </div>
@@ -1610,7 +1634,7 @@ function renderMyPosts(user) {
       <button class="secondary-button" type="button" data-action="publish">${icon("plus")}新发布</button>
     </div>
     <div class="results-list">
-      ${items.length ? items.map((item) => renderListingCard(item, true)).join("") : renderInlineEmpty("还没有发布帖子。")}
+      ${items.length ? items.map((item) => renderListingCard(item, true, { ownerAccess: true })).join("") : renderInlineEmpty("还没有发布帖子。")}
     </div>
   `;
 }
@@ -1673,7 +1697,7 @@ function renderFavorites(user) {
 function renderSettings(user) {
   return `
     <h2>账号设置</h2>
-    <div class="stats-grid">
+    <div class="stats-grid settings-grid">
       <div class="stat-card"><strong>${escapeHtml(user.account)}</strong><span>登录账号</span></div>
       <div class="stat-card"><strong>${maskPhone(user.phone)}</strong><span>手机号脱敏</span></div>
       <div class="stat-card"><strong>${escapeHtml(user.email)}</strong><span>邮箱</span></div>
@@ -2087,6 +2111,101 @@ function openReportModal(kind, id) {
   hydrateIcons();
 }
 
+function openListingEditModal(id) {
+  if (!ensureAuth({ verified: true })) return;
+  const listing = db.listings.find((item) => item.id === Number(id));
+  const user = currentUser();
+  if (!listing || listing.publisherId !== user.id) {
+    toast("只能修改自己发布的信息");
+    return;
+  }
+  const categories = db.categories[listing.channel] || CATEGORY_MAP[listing.channel] || [];
+  const isWanted = listing.channel === "求购交换";
+  $("#modalRoot").innerHTML = `
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">修改发布</p>
+          <h2>${escapeHtml(listing.title)}</h2>
+        </div>
+        <button class="icon-button" type="button" data-action="close-modal" title="关闭">${icon("x")}</button>
+      </div>
+      <form class="form-grid" data-form="listing-edit">
+        <input type="hidden" name="id" value="${listing.id}" />
+        <div class="field full">
+          <label for="editListingTitle">标题</label>
+          <input id="editListingTitle" name="title" maxlength="40" required value="${escapeHtml(listing.title)}" />
+        </div>
+        <div class="field">
+          <label for="editListingCategory">分类</label>
+          <select id="editListingCategory" name="category" required>
+            ${categories.map((category) => `<option ${category === listing.category ? "selected" : ""}>${escapeHtml(category)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label for="editListingCampus">校区</label>
+          <select id="editListingCampus" name="campus" required>
+            ${CAMPUSES.map((campus) => `<option ${campus === listing.campus ? "selected" : ""}>${escapeHtml(campus)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label for="editListingLocation">地点</label>
+          <input id="editListingLocation" name="locationText" required value="${escapeHtml(listing.locationText)}" />
+        </div>
+        <div class="field">
+          <label for="editListingContact">联系方式可见性</label>
+          <select id="editListingContact" name="contactMode">
+            ${["站内沟通", "认证后可见"].map((mode) => `<option ${mode === listing.contactMode ? "selected" : ""}>${mode}</option>`).join("")}
+          </select>
+        </div>
+        ${
+          isWanted
+            ? `
+              <div class="field">
+                <label for="editBudgetMin">预算下限</label>
+                <input id="editBudgetMin" name="budgetMin" type="number" min="0" value="${escapeHtml(listing.budgetMin)}" />
+              </div>
+              <div class="field">
+                <label for="editBudgetMax">预算上限</label>
+                <input id="editBudgetMax" name="budgetMax" type="number" min="0" value="${escapeHtml(listing.budgetMax)}" />
+              </div>
+            `
+            : `
+              <div class="field">
+                <label for="editListingPrice">价格/服务费</label>
+                <input id="editListingPrice" name="price" type="number" min="0" value="${escapeHtml(listing.price)}" />
+              </div>
+              <div class="field">
+                <label for="editConditionLevel">成色</label>
+                <select id="editConditionLevel" name="conditionLevel">
+                  ${["不限", "全新", "九成新", "八成新", "七成新", "六成新"].map((level) => `<option ${level === listing.conditionLevel ? "selected" : ""}>${level}</option>`).join("")}
+                </select>
+              </div>
+            `
+        }
+        <div class="field full">
+          <label for="editListingDescription">描述</label>
+          <textarea id="editListingDescription" name="description" required>${escapeHtml(listing.description)}</textarea>
+        </div>
+        <div class="field full">
+          <label for="editListingImage">图片</label>
+          <div class="image-edit-row">
+            <img src="${escapeHtml(listing.images?.[0] || IMAGE_POOL[listing.channel]?.[0] || IMAGE_POOL["闲置转让"][0])}" alt="${escapeHtml(listing.title)}当前图片" />
+            <div>
+              <input id="editListingImage" name="imageFile" type="file" accept="image/*" />
+              <p class="small-text">不选择新图片则保留当前图片；新图片大小不能超过 10MB。</p>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions field full">
+          <button class="primary-button" type="submit">${icon("save")}保存修改</button>
+        </div>
+      </form>
+    </div>
+  `;
+  hydrateIcons();
+}
+
 function closeModal() {
   $("#modalRoot").innerHTML = "";
 }
@@ -2137,10 +2256,14 @@ function handleClick(event) {
     setView(target.dataset.view);
   } else if (action === "detail") {
     openDetail(target.dataset.kind, target.dataset.id);
+  } else if (action === "owner-detail") {
+    openDetail(target.dataset.kind, target.dataset.id, { ownerAccess: true });
   } else if (action === "favorite") {
     toggleFavorite(target.dataset.kind, target.dataset.id);
   } else if (action === "contact") {
     startConversation(target.dataset.kind, target.dataset.id);
+  } else if (action === "edit-listing") {
+    openListingEditModal(target.dataset.id);
   } else if (action === "open-report") {
     if (ensureAuth()) openReportModal(target.dataset.kind, target.dataset.id);
   } else if (action === "withdraw-report") {
@@ -2204,6 +2327,7 @@ function handleSubmit(event) {
   if (type === "login") login(data);
   if (type === "register") register(data);
   if (type === "publish") submitPublish(data, form);
+  if (type === "listing-edit") updateListingDetails(data);
   if (type === "verification") submitVerification(data, form);
   if (type === "message") sendMessage(data, form);
   if (type === "report") submitReport(data);
@@ -2552,13 +2676,14 @@ function addAnnouncement(data, form) {
   render();
 }
 
-function openDetail(kind, id) {
+function openDetail(kind, id, options = {}) {
   const item = itemByKind(kind, id);
   if (!item) {
     toast("信息不存在");
     return;
   }
-  if (!canBrowseItem(kind, item)) {
+  const canOpenAsOwner = options.ownerAccess && canViewOwnListingInProfile(kind, item);
+  if (!canBrowseItem(kind, item) && !canOpenAsOwner) {
     toast(unavailableItemText(kind));
     return;
   }
@@ -2576,7 +2701,7 @@ function openDetail(kind, id) {
     db.browseHistory = db.browseHistory.slice(0, 60);
   }
   saveDb();
-  setView("detail", { detail: { kind, id: Number(id) } });
+  setView("detail", { detail: { kind, id: Number(id), ownerAccess: canOpenAsOwner } });
 }
 
 function toggleFavorite(kind, id) {
@@ -2619,6 +2744,56 @@ function updateListingStatus(id, status) {
   item.updatedAt = new Date().toISOString();
   saveDb();
   toast(status === "展示中" ? "已重新上架，其他用户可以浏览了" : `状态已更新为 ${status}`);
+  render();
+}
+
+async function updateListingDetails(data) {
+  if (!ensureAuth({ verified: true })) return;
+  const item = db.listings.find((listing) => listing.id === Number(data.id));
+  const user = currentUser();
+  if (!item || item.publisherId !== user.id) {
+    toast("只能修改自己发布的信息");
+    return;
+  }
+
+  const title = data.title.trim();
+  const titleLength = Array.from(title).length;
+  if (titleLength < 5 || titleLength > 40) {
+    toast("标题需为 5 到 40 字");
+    return;
+  }
+  const risk = scanRisk(`${title} ${data.description || ""}`);
+  if (risk.blocked.length) {
+    toast(`命中禁发规则：${risk.blocked.join("、")}`);
+    return;
+  }
+
+  item.category = data.category;
+  item.title = title;
+  item.description = data.description.trim();
+  item.campus = data.campus;
+  item.locationText = data.locationText.trim();
+  item.contactMode = data.contactMode || "站内沟通";
+  if (item.channel === "求购交换") {
+    item.price = "";
+    item.budgetMin = data.budgetMin ? Number(data.budgetMin) : "";
+    item.budgetMax = data.budgetMax ? Number(data.budgetMax) : "";
+    item.conditionLevel = "不限";
+  } else {
+    item.price = data.price ? Number(data.price) : "";
+    item.budgetMin = "";
+    item.budgetMax = "";
+    item.conditionLevel = data.conditionLevel || "不限";
+  }
+  if (data.imageFile && typeof data.imageFile !== "string" && data.imageFile.size) {
+    const image = await resolvePublishImage(data.imageFile, item.channel);
+    if (!image) return;
+    item.images = [image];
+  }
+  item.updatedAt = new Date().toISOString();
+  saveDb();
+  closeModal();
+  toast("发布信息已更新");
   render();
 }
 

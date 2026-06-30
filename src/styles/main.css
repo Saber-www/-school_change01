@@ -577,6 +577,13 @@ h3 {
   display: block;
   margin-bottom: 6px;
   font-size: 24px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.16;
+}
+
+.settings-grid .stat-card strong {
+  font-size: clamp(16px, 2.1vw, 24px);
 }
 
 .stat-card span,
@@ -1450,6 +1457,22 @@ td.admin-actions .table-action:last-child {
 .message-compose .primary-button {
   min-height: 46px;
   padding: 0 16px;
+}
+
+.image-edit-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.image-edit-row img {
+  width: 120px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
 }
 
 .modal-root:not(:empty) {
