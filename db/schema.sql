@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS listing (
 CREATE TABLE IF NOT EXISTS listing_image (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   listing_id BIGINT NOT NULL,
-  image_url VARCHAR(255) NOT NULL,
+  image_url TEXT NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_listing_image_listing (listing_id, sort_order),
@@ -237,6 +237,16 @@ CREATE TABLE IF NOT EXISTS notification (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_notification_user_read_created (user_id, read_status, created_at),
   CONSTRAINT fk_notification_user FOREIGN KEY (user_id) REFERENCES user (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS announcement (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  title VARCHAR(100) NOT NULL,
+  content TEXT NOT NULL,
+  level VARCHAR(30) NOT NULL DEFAULT '公告',
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0 正常，1 下线',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_announcement_status_created (status, created_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS admin_audit_log (

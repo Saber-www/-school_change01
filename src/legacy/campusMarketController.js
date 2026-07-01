@@ -82,6 +82,8 @@ const {
   setView,
   render,
   toast,
+  apiRequest,
+  syncDbFromServer,
   nextId,
   renderAuthRequired,
   renderInlineEmpty,
@@ -112,7 +114,7 @@ function saveDb() {
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
-  if (serverAvailable && authToken) {
+  if (serverAvailable && authToken && currentUser()?.role === "admin") {
     syncDbToServer();
   }
 }
@@ -329,6 +331,15 @@ function upsertUser(user) {
   if (index >= 0) db.users[index] = nextUser;
   else db.users.push(nextUser);
   return nextUser;
+}
+
+function upsertRecord(collection, record) {
+  if (!record) return null;
+  const index = collection.findIndex((item) => item.id === record.id);
+  const nextRecord = index >= 0 ? { ...collection[index], ...record } : record;
+  if (index >= 0) collection[index] = nextRecord;
+  else collection.unshift(nextRecord);
+  return nextRecord;
 }
 
 function isFavorited(kind, id, user = currentUser()) {
@@ -2475,7 +2486,6 @@ async function submitPublish(data, form) {
     return;
   }
 
-  const user = currentUser();
   const channel = data.channel;
   const reviewStatus = risk.review.length ? "待审核" : "展示中";
 
@@ -2484,73 +2494,73 @@ async function submitPublish(data, form) {
       toast("截止时间必须晚于当前时间");
       return;
     }
-    const task = {
-      id: nextId(db.tasks),
-      publisherId: user.id,
-      takerId: null,
-      channel,
-      taskType: data.category,
-      title: data.title.trim(),
-      description: data.description.trim(),
-      pickupLocation: data.pickupLocation.trim(),
-      deliveryLocation: data.deliveryLocation.trim(),
-      campus: data.campus,
-      reward: Number(data.reward || 0),
-      deadlineAt: new Date(data.deadlineAt).toISOString(),
-      itemNote: data.itemNote.trim(),
-      status: risk.review.length ? "已取消" : "待接单",
-      cancelReason: "",
-      completedAt: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      viewCount: 0,
-      favoriteCount: 0,
-      timeline: [
-        {
-          text: risk.review.length ? `命中风险词 ${risk.review.join("、")}，等待管理员介入` : "任务发布，等待认证用户接单",
-          time: new Date().toISOString(),
-        },
-      ],
-    };
-    db.tasks.unshift(task);
-    saveDb();
-    form.reset();
-    toast(risk.review.length ? "任务已进入人工复核" : "任务发布成功");
-    setView("detail", { detail: { kind: "task", id: task.id } });
+    const timeline = [
+      {
+        text: risk.review.length ? `命中风险词 ${risk.review.join("、")}，等待管理员介入` : "任务发布，等待认证用户接单",
+        time: new Date().toISOString(),
+      },
+    ];
+    try {
+      const task = await apiRequest("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          channel,
+          category: data.category,
+          taskType: data.category,
+          title: data.title.trim(),
+          description: data.description.trim(),
+          pickupLocation: data.pickupLocation.trim(),
+          deliveryLocation: data.deliveryLocation.trim(),
+          campus: data.campus,
+          reward: Number(data.reward || 0),
+          deadlineAt: new Date(data.deadlineAt).toISOString(),
+          itemNote: data.itemNote.trim(),
+          status: risk.review.length ? "已取消" : "待接单",
+          timeline,
+        }),
+      });
+      upsertRecord(db.tasks, task);
+      await syncDbFromServer();
+      form.reset();
+      toast(risk.review.length ? "任务已进入人工复核" : "任务发布成功");
+      setView("detail", { detail: { kind: "task", id: task.id } });
+    } catch (error) {
+      toast(error.message || "任务发布失败");
+    }
     return;
   }
 
   const image = await resolvePublishImage(data.imageFile, channel);
   if (!image) return;
 
-  const listing = {
-    id: nextId(db.listings),
-    publisherId: user.id,
-    channel,
-    category: data.category,
-    title: data.title.trim(),
-    description: data.description.trim(),
-    price: data.price ? Number(data.price) : "",
-    originalPrice: "",
-    budgetMin: data.budgetMin ? Number(data.budgetMin) : "",
-    budgetMax: data.budgetMax ? Number(data.budgetMax) : "",
-    conditionLevel: data.conditionLevel || "不限",
-    campus: data.campus,
-    locationText: data.locationText.trim(),
-    contactMode: data.contactMode || "站内沟通",
-    status: reviewStatus,
-    viewCount: 0,
-    favoriteCount: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    images: [image],
-    tags: risk.review.length ? ["待人工审核"] : ["站内沟通", "同校交易"],
-  };
-  db.listings.unshift(listing);
-  saveDb();
-  form.reset();
-  toast(risk.review.length ? "信息已提交审核" : "发布成功");
-  setView("detail", { detail: { kind: "listing", id: listing.id } });
+  try {
+    const listing = await apiRequest("/api/listings", {
+      method: "POST",
+      body: JSON.stringify({
+        channel,
+        category: data.category,
+        title: data.title.trim(),
+        description: data.description.trim(),
+        price: data.price ? Number(data.price) : "",
+        budgetMin: data.budgetMin ? Number(data.budgetMin) : "",
+        budgetMax: data.budgetMax ? Number(data.budgetMax) : "",
+        conditionLevel: data.conditionLevel || "不限",
+        campus: data.campus,
+        locationText: data.locationText.trim(),
+        contactMode: data.contactMode || "站内沟通",
+        status: reviewStatus,
+        images: [image],
+        tags: risk.review.length ? ["待人工审核"] : ["站内沟通", "同校交易"],
+      }),
+    });
+    upsertRecord(db.listings, listing);
+    await syncDbFromServer();
+    form.reset();
+    toast(risk.review.length ? "信息已提交审核" : "发布成功");
+    setView("detail", { detail: { kind: "listing", id: listing.id } });
+  } catch (error) {
+    toast(error.message || "发布失败");
+  }
 }
 
 async function resolvePublishImage(file, channel) {
@@ -2587,49 +2597,48 @@ function scanRisk(text) {
   return { blocked, review };
 }
 
-function submitVerification(data, form) {
+async function submitVerification(data, form) {
   if (!ensureAuth()) return;
-  const user = currentUser();
-  const record = {
-    id: nextId(db.verifications),
-    userId: user.id,
-    realName: data.realName.trim(),
-    studentNo: data.studentNo.trim(),
-    method: data.method,
-    proofUrl: data.proofUrl.trim(),
-    status: "待审核",
-    rejectReason: "",
-    reviewedBy: null,
-    reviewedAt: "",
-    createdAt: new Date().toISOString(),
-  };
-  db.verifications.unshift(record);
-  user.verifyStatus = "待审核";
-  saveDb();
-  form.reset();
-  toast("认证已提交，等待管理员审核");
-  render();
+  try {
+    await apiRequest("/api/verifications", {
+      method: "POST",
+      body: JSON.stringify({
+        realName: data.realName.trim(),
+        studentNo: data.studentNo.trim(),
+        method: data.method,
+        proofUrl: data.proofUrl.trim(),
+      }),
+    });
+    await syncDbFromServer();
+    form.reset();
+    toast("认证已提交，等待管理员审核");
+    render();
+  } catch (error) {
+    toast(error.message || "认证提交失败");
+  }
 }
 
-function submitReport(data) {
+async function submitReport(data) {
   if (!ensureAuth()) return;
-  db.reports.unshift({
-    id: nextId(db.reports),
-    reporterId: currentUser().id,
-    targetKind: data.kind,
-    targetId: Number(data.id),
-    reason: data.reason.trim(),
-    status: "待处理",
-    result: "",
-    createdAt: new Date().toISOString(),
-  });
-  saveDb();
-  closeModal();
-  toast("举报已提交，管理员会处理");
-  render();
+  try {
+    await apiRequest("/api/reports", {
+      method: "POST",
+      body: JSON.stringify({
+        targetKind: data.kind,
+        targetId: Number(data.id),
+        reason: data.reason.trim(),
+      }),
+    });
+    await syncDbFromServer();
+    closeModal();
+    toast("举报已提交，管理员会处理");
+    render();
+  } catch (error) {
+    toast(error.message || "举报提交失败");
+  }
 }
 
-function withdrawReport(id) {
+async function withdrawReport(id) {
   if (!ensureAuth()) return;
   const user = currentUser();
   const report = db.reports.find((item) => item.id === Number(id));
@@ -2641,39 +2650,50 @@ function withdrawReport(id) {
     toast("已处理的举报不能撤销");
     return;
   }
-  db.reports = db.reports.filter((item) => item.id !== report.id);
-  saveDb();
-  toast("已撤销举报");
-  render();
-}
-
-function addCategory(data, form) {
-  if (!ensureAuth({ admin: true })) return;
-  db.categories[data.channel] = db.categories[data.channel] || [];
-  if (!db.categories[data.channel].includes(data.name.trim())) {
-    db.categories[data.channel].push(data.name.trim());
-    addAudit(`新增分类：${data.channel} / ${data.name.trim()}`);
-    saveDb();
-    form.reset();
-    toast("分类已新增");
+  try {
+    await apiRequest(`/api/reports/${report.id}`, { method: "DELETE" });
+    await syncDbFromServer();
+    toast("已撤销举报");
     render();
+  } catch (error) {
+    toast(error.message || "撤销举报失败");
   }
 }
 
-function addAnnouncement(data, form) {
+async function addCategory(data, form) {
   if (!ensureAuth({ admin: true })) return;
-  db.announcements.unshift({
-    id: nextId(db.announcements),
-    title: data.title.trim(),
-    content: data.content.trim(),
-    level: data.level,
-    createdAt: new Date().toISOString(),
-  });
-  addAudit(`发布公告：${data.title.trim()}`);
-  saveDb();
-  form.reset();
-  toast("公告已发布");
-  render();
+  try {
+    await apiRequest("/api/admin/categories", {
+      method: "POST",
+      body: JSON.stringify({ channel: data.channel, name: data.name.trim() }),
+    });
+    await syncDbFromServer();
+    form.reset();
+    toast("分类已新增");
+    render();
+  } catch (error) {
+    toast(error.message || "分类新增失败");
+  }
+}
+
+async function addAnnouncement(data, form) {
+  if (!ensureAuth({ admin: true })) return;
+  try {
+    await apiRequest("/api/admin/announcements", {
+      method: "POST",
+      body: JSON.stringify({
+        title: data.title.trim(),
+        content: data.content.trim(),
+        level: data.level,
+      }),
+    });
+    await syncDbFromServer();
+    form.reset();
+    toast("公告已发布");
+    render();
+  } catch (error) {
+    toast(error.message || "公告发布失败");
+  }
 }
 
 function openDetail(kind, id, options = {}) {
@@ -2699,12 +2719,22 @@ function openDetail(kind, id, options = {}) {
       createdAt: new Date().toISOString(),
     });
     db.browseHistory = db.browseHistory.slice(0, 60);
+    apiRequest("/api/history", {
+      method: "POST",
+      body: JSON.stringify({ kind, id: Number(id) }),
+    }).catch(() => {});
+  }
+  if (!canOpenAsOwner) {
+    const endpoint = kind === "task" ? `/api/tasks/${Number(id)}` : `/api/listings/${Number(id)}`;
+    apiRequest(endpoint, { method: "GET" })
+      .then((updated) => Object.assign(item, updated))
+      .catch(() => {});
   }
   saveDb();
   setView("detail", { detail: { kind, id: Number(id), ownerAccess: canOpenAsOwner } });
 }
 
-function toggleFavorite(kind, id) {
+async function toggleFavorite(kind, id) {
   if (!ensureAuth()) return;
   const item = itemByKind(kind, id);
   if (!item) return;
@@ -2714,25 +2744,23 @@ function toggleFavorite(kind, id) {
   }
   const user = currentUser();
   const index = db.favorites.findIndex((fav) => fav.userId === user.id && fav.kind === kind && fav.id === Number(id));
-  if (index >= 0) {
-    db.favorites.splice(index, 1);
-    item.favoriteCount = Math.max(0, item.favoriteCount - 1);
-    toast("已取消收藏");
-  } else {
-    db.favorites.unshift({
-      userId: user.id,
-      kind,
-      id: Number(id),
-      createdAt: new Date().toISOString(),
-    });
-    item.favoriteCount += 1;
-    toast("已收藏");
+  const endpoint = kind === "task" ? `/api/tasks/${Number(id)}/favorite` : `/api/listings/${Number(id)}/favorite`;
+  try {
+    if (index >= 0) {
+      await apiRequest(endpoint, { method: "DELETE" });
+      toast("已取消收藏");
+    } else {
+      await apiRequest(kind === "task" ? endpoint : `/api/listings/${Number(id)}/favorite`, { method: "POST" });
+      toast("已收藏");
+    }
+    await syncDbFromServer();
+    render();
+  } catch (error) {
+    toast(error.message || "收藏操作失败");
   }
-  saveDb();
-  render();
 }
 
-function updateListingStatus(id, status) {
+async function updateListingStatus(id, status) {
   if (!ensureAuth({ verified: true })) return;
   const item = db.listings.find((listing) => listing.id === Number(id));
   if (!item) return;
@@ -2740,11 +2768,15 @@ function updateListingStatus(id, status) {
     toast("只能管理自己的帖子");
     return;
   }
-  item.status = status;
-  item.updatedAt = new Date().toISOString();
-  saveDb();
-  toast(status === "展示中" ? "已重新上架，其他用户可以浏览了" : `状态已更新为 ${status}`);
-  render();
+  const action = status === "展示中" ? "online" : status === "已完成" ? "complete" : "offline";
+  try {
+    await apiRequest(`/api/listings/${Number(id)}/${action}`, { method: "POST" });
+    await syncDbFromServer();
+    toast(status === "展示中" ? "已重新上架，其他用户可以浏览了" : `状态已更新为 ${status}`);
+    render();
+  } catch (error) {
+    toast(error.message || "状态更新失败");
+  }
 }
 
 async function updateListingDetails(data) {
@@ -2768,36 +2800,45 @@ async function updateListingDetails(data) {
     return;
   }
 
-  item.category = data.category;
-  item.title = title;
-  item.description = data.description.trim();
-  item.campus = data.campus;
-  item.locationText = data.locationText.trim();
-  item.contactMode = data.contactMode || "站内沟通";
+  const updates = {
+    category: data.category,
+    title,
+    description: data.description.trim(),
+    campus: data.campus,
+    locationText: data.locationText.trim(),
+    contactMode: data.contactMode || "站内沟通",
+  };
   if (item.channel === "求购交换") {
-    item.price = "";
-    item.budgetMin = data.budgetMin ? Number(data.budgetMin) : "";
-    item.budgetMax = data.budgetMax ? Number(data.budgetMax) : "";
-    item.conditionLevel = "不限";
+    updates.price = "";
+    updates.budgetMin = data.budgetMin ? Number(data.budgetMin) : "";
+    updates.budgetMax = data.budgetMax ? Number(data.budgetMax) : "";
+    updates.conditionLevel = "不限";
   } else {
-    item.price = data.price ? Number(data.price) : "";
-    item.budgetMin = "";
-    item.budgetMax = "";
-    item.conditionLevel = data.conditionLevel || "不限";
+    updates.price = data.price ? Number(data.price) : "";
+    updates.budgetMin = "";
+    updates.budgetMax = "";
+    updates.conditionLevel = data.conditionLevel || "不限";
   }
   if (data.imageFile && typeof data.imageFile !== "string" && data.imageFile.size) {
     const image = await resolvePublishImage(data.imageFile, item.channel);
     if (!image) return;
-    item.images = [image];
+    updates.images = [image];
   }
-  item.updatedAt = new Date().toISOString();
-  saveDb();
-  closeModal();
-  toast("发布信息已更新");
-  render();
+  try {
+    await apiRequest(`/api/listings/${Number(data.id)}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+    await syncDbFromServer();
+    closeModal();
+    toast("发布信息已更新");
+    render();
+  } catch (error) {
+    toast(error.message || "发布信息更新失败");
+  }
 }
 
-function transitionTask(id, next) {
+async function transitionTask(id, next) {
   if (!ensureAuth({ verified: true })) return;
   const task = db.tasks.find((item) => item.id === Number(id));
   if (!task) return;
@@ -2808,57 +2849,44 @@ function transitionTask(id, next) {
   if (next === "accept") {
     if (task.status !== "待接单") return toast("任务已被接单或状态不可接单");
     if (isPublisher) return toast("发布者不能接自己的任务");
-    task.takerId = user.id;
-    task.status = "进行中";
-    task.previousStatus = "";
-    task.previousTakerId = null;
-    task.timeline.push({ text: `${user.nickname} 已接单并开始执行`, time: new Date().toISOString() });
   } else if (next === "complete") {
     if (!isTaker || task.status !== "进行中") return toast("当前状态不可完成任务");
-    task.previousStatus = task.status;
-    task.previousTakerId = task.takerId;
-    task.status = "已完成";
-    task.completedAt = new Date().toISOString();
-    task.timeline.push({ text: "接单者完成任务，流程闭环", time: new Date().toISOString() });
   } else if (next === "cancel") {
     if (!(isPublisher || isTaker) || ["已完成", "已取消"].includes(task.status)) return toast("当前状态不可取消");
     const reason = window.prompt("请输入取消原因", "双方协商取消");
     if (!reason) return;
-    task.previousStatus = task.status;
-    task.previousTakerId = task.takerId || null;
-    task.status = "已取消";
-    task.cancelReason = reason;
-    task.timeline.push({ text: `任务取消：${reason}`, time: new Date().toISOString() });
+    try {
+      const updated = await apiRequest(`/api/tasks/${Number(id)}/${next}`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      upsertRecord(db.tasks, updated);
+      await syncDbFromServer();
+      render();
+      toast(`任务已更新为${updated.status}，${taskProgressHint(updated)}`);
+    } catch (error) {
+      toast(error.message || "任务状态更新失败");
+    }
+    return;
   } else if (next === "release") {
     if (!isTaker || task.status !== "进行中") return toast("只有当前接单者可撤回接单");
-    task.previousStatus = task.status;
-    task.previousTakerId = task.takerId;
-    task.takerId = null;
-    task.status = "待接单";
-    task.timeline.push({ text: `${user.nickname} 撤回接单，任务恢复待接单`, time: new Date().toISOString() });
   } else if (next === "restore-progress") {
     if (!(isPublisher || isTaker) || task.status !== "已完成") return toast("当前状态不可恢复");
-    task.status = "进行中";
-    task.completedAt = "";
-    if (!task.takerId && task.previousTakerId) task.takerId = task.previousTakerId;
-    task.timeline.push({ text: "撤回完成操作，任务恢复进行中", time: new Date().toISOString() });
   } else if (next === "restore-cancel") {
     if (!(isPublisher || isTaker) || task.status !== "已取消") return toast("当前状态不可恢复");
-    const fallbackStatus = task.takerId ? "进行中" : "待接单";
-    const restoredStatus = ["待接单", "进行中"].includes(task.previousStatus) ? task.previousStatus : fallbackStatus;
-    task.status = restoredStatus;
-    task.takerId = task.previousTakerId || (restoredStatus === "待接单" ? null : task.takerId);
-    task.cancelReason = "";
-    task.timeline.push({ text: `撤回取消操作，任务恢复为${restoredStatus}`, time: new Date().toISOString() });
   }
-
-  task.updatedAt = new Date().toISOString();
-  saveDb();
-  render();
-  toast(`任务已更新为${task.status}，${taskProgressHint(task)}`);
+  try {
+    const updated = await apiRequest(`/api/tasks/${Number(id)}/${next}`, { method: "POST" });
+    upsertRecord(db.tasks, updated);
+    await syncDbFromServer();
+    render();
+    toast(`任务已更新为${updated.status}，${taskProgressHint(updated)}`);
+  } catch (error) {
+    toast(error.message || "任务状态更新失败");
+  }
 }
 
-function updateUserStatus(id, status) {
+async function updateUserStatus(id, status) {
   if (!ensureAuth({ admin: true })) return;
   const user = db.users.find((item) => item.id === Number(id));
   if (!user) return;
@@ -2866,73 +2894,76 @@ function updateUserStatus(id, status) {
     toast("不能封禁管理员账号");
     return;
   }
-  user.status = status;
-  addAudit(`更新用户 ${user.nickname} 状态为 ${status}`);
-  saveDb();
-  toast("用户状态已更新");
-  render();
+  try {
+    await apiRequest(`/api/admin/users/${Number(id)}/${status === "正常" ? "unban" : "ban"}`, { method: "POST" });
+    await syncDbFromServer();
+    toast("用户状态已更新");
+    render();
+  } catch (error) {
+    toast(error.message || "用户状态更新失败");
+  }
 }
 
-function reviewVerification(id, status) {
+async function reviewVerification(id, status) {
   if (!ensureAuth({ admin: true })) return;
   const record = db.verifications.find((item) => item.id === Number(id));
   if (!record) return;
-  const user = userById(record.userId);
-  record.status = status === "通过" ? "通过" : "驳回";
-  record.reviewedBy = currentUser().id;
-  record.reviewedAt = new Date().toISOString();
-  if (status === "通过") {
-    user.verifyStatus = "已认证";
-    record.rejectReason = "";
-  } else {
-    user.verifyStatus = "未认证";
-    record.rejectReason = "材料不清晰，请重新提交";
+  try {
+    await apiRequest(`/api/admin/verifications/${Number(id)}/${status === "通过" ? "approve" : "reject"}`, { method: "POST" });
+    await syncDbFromServer();
+    toast(`认证已${status === "通过" ? "通过" : "驳回"}`);
+    render();
+  } catch (error) {
+    toast(error.message || "认证审核失败");
   }
-  addAudit(`${record.status}用户 ${user.nickname} 的校园认证`);
-  saveDb();
-  toast(`认证已${record.status}`);
-  render();
 }
 
-function adminUpdateListing(id, status) {
+async function adminUpdateListing(id, status) {
   if (!ensureAuth({ admin: true })) return;
   const item = db.listings.find((listing) => listing.id === Number(id));
   if (!item) return;
-  item.status = status;
-  item.updatedAt = new Date().toISOString();
-  addAudit(`更新帖子 ${item.title} 状态为 ${status}`);
-  saveDb();
-  toast("帖子状态已更新");
-  render();
+  try {
+    await apiRequest(`/api/admin/listings/${Number(id)}/${status === "展示中" ? "approve" : "remove"}`, { method: "POST" });
+    await syncDbFromServer();
+    toast("帖子状态已更新");
+    render();
+  } catch (error) {
+    toast(error.message || "帖子状态更新失败");
+  }
 }
 
-function adminUpdateTask(id, status) {
+async function adminUpdateTask(id, status) {
   if (!ensureAuth({ admin: true })) return;
   const task = db.tasks.find((item) => item.id === Number(id));
   if (!task) return;
-  task.status = status;
-  task.updatedAt = new Date().toISOString();
-  task.timeline.push({ text: `管理员将任务状态更新为 ${status}`, time: new Date().toISOString() });
-  addAudit(`更新任务 ${task.title} 状态为 ${status}`);
-  saveDb();
-  toast("任务状态已更新");
-  render();
+  try {
+    await apiRequest(`/api/admin/tasks/${Number(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+    await syncDbFromServer();
+    toast("任务状态已更新");
+    render();
+  } catch (error) {
+    toast(error.message || "任务状态更新失败");
+  }
 }
 
-function resolveReport(id, result) {
+async function resolveReport(id, result) {
   if (!ensureAuth({ admin: true })) return;
   const report = db.reports.find((item) => item.id === Number(id));
   if (!report) return;
-  report.status = "已处理";
-  report.result = result;
-  if (result.includes("下架")) {
-    const item = itemByKind(report.targetKind, report.targetId);
-    if (item) item.status = report.targetKind === "task" ? "已取消" : "已下架";
+  try {
+    await apiRequest(`/api/admin/reports/${Number(id)}/handle`, {
+      method: "POST",
+      body: JSON.stringify({ result }),
+    });
+    await syncDbFromServer();
+    toast("举报已处理");
+    render();
+  } catch (error) {
+    toast(error.message || "举报处理失败");
   }
-  addAudit(`处理举报 ${report.id}：${result}`);
-  saveDb();
-  toast("举报已处理");
-  render();
 }
 
 function addAudit(text) {

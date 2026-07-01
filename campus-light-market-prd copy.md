@@ -298,18 +298,26 @@
 
 ### 7.4 后端技术建议
 
-推荐课程项目技术栈：
+当前项目实际技术栈：
+
+- 前端：Vue 3 + Vite。
+- 后端：Node.js + Express。
+- 数据库：MySQL 8，使用 `app_state` 作为运行态主数据源，并同步镜像到标准业务表。
+
+可选扩展技术栈：
 
 - Java：Spring Boot 3 + MyBatis Plus + MySQL + Redis。
 - 或 Node.js：NestJS + Prisma + MySQL/PostgreSQL + Redis。
 
-建议优先选择团队熟悉的技术。若使用 Java，整体更适合课程答辩中的分层架构展示。
+建议优先选择团队熟悉的技术。若后续重构为 Java，整体更适合课程答辩中的分层架构展示；当前版本以 Express REST API 完成功能闭环。
 
 ## 8. 数据库设计
 
 ### 8.1 数据库选型
 
 MVP 推荐 MySQL 8。
+
+当前实现说明：系统以 `app_state` 表保存完整运行态数据，后端每次写入后同步到 `user`、`listing`、`task_order`、`message`、`announcement` 等标准业务表。Navicat 查看标准表时需要手动刷新，直接修改标准业务表不会反向同步到前端。
 
 可选辅助组件：
 
@@ -412,7 +420,7 @@ admin_user 1 ── n audit_log
 | --- | --- | --- |
 | id | bigint | 主键 |
 | listing_id | bigint | 帖子 ID |
-| image_url | varchar(255) | 图片地址 |
+| image_url | text | 图片地址或 base64 图片数据 |
 | sort_order | int | 排序 |
 | created_at | datetime | 创建时间 |
 
@@ -529,7 +537,18 @@ admin_user 1 ── n audit_log
 | read_status | tinyint | 未读、已读 |
 | created_at | datetime | 创建时间 |
 
-#### 8.3.14 管理员与日志表
+#### 8.3.14 公告表 `announcement`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | bigint | 主键 |
+| title | varchar(100) | 公告标题 |
+| content | text | 公告内容 |
+| level | varchar(30) | 公告级别 |
+| status | tinyint | 正常、下线 |
+| created_at | datetime | 创建时间 |
+
+#### 8.3.15 管理员与日志表
 
 `admin_user`：
 
@@ -610,7 +629,7 @@ flowchart TD
 ### 10.1 登录注册
 
 - 支持用户名/手机号/邮箱注册。
-- 密码需要加密存储。
+- 密码使用 `scrypt` 哈希存储；旧演示明文账号由后端自动升级为哈希。
 - 登录后返回 Token 或创建 Session。
 - 后端需要校验用户状态，封禁用户不能登录或发布。
 

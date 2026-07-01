@@ -55,7 +55,11 @@ campus_light_market_03
 
 不要改成已有的 `campus_light_market`，避免和其他项目数据混淆。连接参数写在本地 `.env` 中，示例见 `.env.example`。
 
-后端启动时会自动创建 `campus_light_market_03` 和运行态表 `app_state`。如果 MySQL 无法连接，会退回 `data/database.json` 本地降级模式，并在启动日志中提示 `Storage mode: json`。
+后端启动时会自动创建 `campus_light_market_03`、运行态表 `app_state` 和标准业务表。当前实现以 `app_state` 作为主数据源，`user`、`listing`、`task_order`、`message` 等标准表由后端自动镜像同步，方便在 Navicat 中查看和提交数据库结构。
+
+Navicat 已打开的数据表不会自动实时刷新。前端或接口写入成功后，需要在 Navicat 中手动刷新、重新执行查询或重新打开表才能看到最新记录。不要直接修改标准业务表作为业务入口，因为下一次同步会以 `app_state` 为准覆盖镜像表。
+
+如果 MySQL 无法连接，会退回 `data/database.json` 本地降级模式，并在启动日志中提示 `Storage mode: json`。
 
 ## 演示账号
 
@@ -95,8 +99,10 @@ campus_light_market_03
 - 用户端：首页、频道、搜索筛选、详情、发布、消息、个人中心。
 - 管理端：数据看板、用户管理、认证审核、帖子管理、任务管理、举报处理、分类管理、公告管理、操作日志。
 - 后端 API：Express 提供登录注册、当前用户、校园认证、帖子、任务、消息、举报、评价、后台管理。
-- 数据持久化：前端读取 `/api/bootstrap`，操作后同步到 MySQL `campus_light_market_03.app_state`。
-- 数据库交付：提供 MySQL 8 核心表、索引、外键、评分约束和运行态 `app_state` 表。
+- 数据持久化：普通用户操作通过具体 REST API 写入后端；管理员兼容整包同步 `/api/bootstrap`。后端写入 `app_state` 后自动镜像到标准业务表。
+- 数据库交付：提供 MySQL 8 核心表、索引、外键、评分约束、公告表和运行态 `app_state` 表。
+- 安全处理：注册密码使用 `scrypt` 哈希存储，旧演示明文账号会在后端读取/登录时自动升级为哈希。
+- 预留功能：评价与通知已有数据表/API 基础，但前端完整入口仍属于后续扩展。
 
 ## 核心 API
 
@@ -111,12 +117,15 @@ campus_light_market_03
 - `POST /api/tasks`
 - `POST /api/tasks/:id/accept`
 - `POST /api/messages`
+- `POST /api/history`
 - `POST /api/reports`
 - `GET /api/admin/dashboard`
 - `GET /api/admin/users`
 - `GET /api/admin/listings`
+- `POST /api/admin/tasks/:id/status`
 - `GET /api/admin/reports`
 - `GET /api/admin/categories`
+- `POST /api/admin/announcements`
 
 ## 验证命令
 
@@ -124,3 +133,7 @@ campus_light_market_03
 npm run check
 curl http://127.0.0.1:3003/api/health
 ```
+
+git add .
+git commit -m "update"
+git push

@@ -1,5 +1,6 @@
 const crypto = require("node:crypto");
 const express = require("express");
+const { hashPassword, isPasswordHash, verifyPassword } = require("../utils/passwords");
 
 const PUBLIC_LISTING_STATUSES = ["展示中"];
 const FORBIDDEN_WORDS = ["代考", "代课", "代签到", "代写", "论文代写", "药品", "管制刀具", "烟酒", "刷单", "账号交易", "身份证"];
@@ -32,6 +33,34 @@ function createApiRouter(store) {
     const id = sessions.get(token);
     if (id) return db.users.find((user) => user.id === id) || null;
     return null;
+  }
+
+  function sanitizeUser(user) {
+    if (!user) return user;
+    const { password, passwordHash, ...safeUser } = user;
+    return safeUser;
+  }
+
+  function sanitizeStateForClient(db) {
+    return {
+      ...db,
+      users: (db.users || []).map((user) => sanitizeUser(user)),
+    };
+  }
+
+  function mergeBootstrapPayload(currentDb, payload) {
+    const nextDb = { ...payload };
+    const usersById = new Map((currentDb.users || []).map((user) => [Number(user.id), user]));
+    const usersByAccount = new Map((currentDb.users || []).map((user) => [String(user.account || user.username || ""), user]));
+    nextDb.users = (payload.users || []).map((user) => {
+      const existing = usersById.get(Number(user.id)) || usersByAccount.get(String(user.account || user.username || ""));
+      const password = user.password || user.passwordHash || existing?.password || existing?.passwordHash || "";
+      return {
+        ...user,
+        password,
+      };
+    });
+    return nextDb;
   }
 
   function requireUser(req, res, db, options = {}) {
@@ -136,15 +165,16 @@ function createApiRouter(store) {
   });
 
   router.get("/bootstrap", wrap(async (req, res) => {
-    ok(res, await store.read());
+    ok(res, sanitizeStateForClient(await store.read()));
   }));
 
   router.put("/bootstrap", wrap(async (req, res) => {
     const db = await store.read();
-    const user = requireUser(req, res, db);
-    if (!user) return;
-    await store.write(req.body || {});
-    ok(res, req.body || {});
+    const admin = requireUser(req, res, db, { admin: true });
+    if (!admin) return;
+    const merged = mergeBootstrapPayload(db, req.body || {});
+    await store.write(merged);
+    ok(res, sanitizeStateForClient(merged));
   }));
 
   router.post("/dev/reset", wrap(async (req, res) => {
@@ -163,7 +193,7 @@ function createApiRouter(store) {
     const user = {
       id: nextId(db.users),
       account: String(body.account).trim(),
-      password: String(body.password),
+      password: hashPassword(body.password),
       nickname: String(body.nickname).trim(),
       phone: body.phone || "",
       email: body.email || "",
@@ -180,24 +210,25 @@ function createApiRouter(store) {
 
     const token = crypto.randomUUID();
     sessions.set(token, user.id);
-    ok(res, { token, user });
+    ok(res, { token, user: sanitizeUser(user) });
   }));
 
   router.post("/auth/login", wrap(async (req, res) => {
     const db = await store.read();
     const body = req.body || {};
     const account = String(body.account || "").toLowerCase();
-    const user = db.users.find(
-      (item) =>
-        [item.account, item.nickname, item.email, item.phone].some((value) => String(value).toLowerCase() === account) &&
-        item.password === body.password,
-    );
-    if (!user) return fail(res, 401, "账号或密码不正确");
+    const user = db.users.find((item) => [item.account, item.nickname, item.email, item.phone].some((value) => String(value).toLowerCase() === account));
+    if (!user || !verifyPassword(body.password, user.password || user.passwordHash)) return fail(res, 401, "账号或密码不正确");
     if (user.status !== "正常") return fail(res, 403, "账号状态不可用");
+    if (!isPasswordHash(user.password || user.passwordHash)) {
+      user.password = hashPassword(body.password);
+      user.updatedAt = now();
+      await store.write(db);
+    }
 
     const token = crypto.randomUUID();
     sessions.set(token, user.id);
-    ok(res, { token, user });
+    ok(res, { token, user: sanitizeUser(user) });
   }));
 
   router.post("/auth/logout", (req, res) => {
@@ -208,7 +239,7 @@ function createApiRouter(store) {
   router.get("/users/me", wrap(async (req, res) => {
     const db = await store.read();
     const user = requireUser(req, res, db);
-    if (user) ok(res, user);
+    if (user) ok(res, sanitizeUser(user));
   }));
 
   router.put("/users/me", wrap(async (req, res) => {
@@ -224,7 +255,7 @@ function createApiRouter(store) {
       updatedAt: now(),
     });
     await store.write(db);
-    ok(res, user);
+    ok(res, sanitizeUser(user));
   }));
 
   router.post("/verifications", wrap(async (req, res) => {
@@ -359,6 +390,37 @@ function createApiRouter(store) {
     ok(res, listing || {});
   }));
 
+  router.post("/tasks/:id/favorite", wrap(async (req, res) => {
+    const db = await store.read();
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const task = db.tasks.find((item) => item.id === Number(req.params.id));
+    if (!task) return fail(res, 404, "任务不存在");
+    if (!db.favorites.some((fav) => fav.userId === user.id && fav.kind === "task" && fav.id === task.id)) {
+      db.favorites.unshift({ userId: user.id, kind: "task", id: task.id, createdAt: now() });
+      task.favoriteCount = Number(task.favoriteCount || 0) + 1;
+      task.updatedAt = now();
+    }
+    await store.write(db);
+    ok(res, task);
+  }));
+
+  router.delete("/tasks/:id/favorite", wrap(async (req, res) => {
+    const db = await store.read();
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const id = Number(req.params.id);
+    const before = db.favorites.length;
+    db.favorites = db.favorites.filter((fav) => !(fav.userId === user.id && fav.kind === "task" && fav.id === id));
+    const task = db.tasks.find((item) => item.id === id);
+    if (task && db.favorites.length !== before) {
+      task.favoriteCount = Math.max(0, Number(task.favoriteCount || 0) - 1);
+      task.updatedAt = now();
+    }
+    await store.write(db);
+    ok(res, task || {});
+  }));
+
   router.get("/tasks", wrap(async (req, res) => {
     const db = await store.read();
     ok(res, paginate(filterByQuery(db.tasks, req), req));
@@ -397,14 +459,14 @@ function createApiRouter(store) {
       deadlineAt: body.deadlineAt || new Date(Date.now() + 3600000).toISOString(),
       itemNote: body.itemNote || "",
       proofRequired: Boolean(body.proofRequired),
-      status: "待接单",
+      status: body.status || "待接单",
       cancelReason: "",
       completedAt: "",
       createdAt: now(),
       updatedAt: now(),
       viewCount: 0,
       favoriteCount: 0,
-      timeline: [{ text: "任务发布，等待认证用户接单", time: now() }],
+      timeline: body.timeline || [{ text: "任务发布，等待认证用户接单", time: now() }],
     };
     db.tasks.unshift(task);
     await store.write(db);
@@ -516,7 +578,35 @@ function createApiRouter(store) {
     conversation.updatedAt = createdAt;
     conversation.readBy = { ...(conversation.readBy || {}), [user.id]: createdAt };
     await store.write(db);
-    ok(res, message);
+    ok(res, { message, conversation });
+  }));
+
+  router.post("/conversations/:id/read", wrap(async (req, res) => {
+    const db = await store.read();
+    const user = requireUser(req, res, db, { verified: true });
+    if (!user) return;
+    const conversation = db.conversations.find((conv) => conv.id === Number(req.params.id));
+    if (!conversation || !conversation.participants.includes(user.id)) return fail(res, 404, "会话不存在");
+    const readAt = now();
+    conversation.readBy = { ...(conversation.readBy || {}), [user.id]: readAt };
+    await store.write(db);
+    ok(res, { id: conversation.id, readAt });
+  }));
+
+  router.post("/history", wrap(async (req, res) => {
+    const db = await store.read();
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    const body = req.body || {};
+    const kind = body.kind || body.targetType;
+    const id = Number(body.id || body.targetId);
+    if (!kind || !id) return fail(res, 400, "浏览目标不能为空");
+    db.browseHistory = (db.browseHistory || []).filter((row) => !(row.userId === user.id && row.kind === kind && row.id === id));
+    const record = { userId: user.id, kind, id, createdAt: now() };
+    db.browseHistory.unshift(record);
+    db.browseHistory = db.browseHistory.slice(0, 60);
+    await store.write(db);
+    ok(res, record);
   }));
 
   router.post("/reports", wrap(async (req, res) => {
@@ -594,7 +684,10 @@ function createApiRouter(store) {
   router.get("/admin/users", wrap(async (req, res) => {
     const db = await store.read();
     const admin = requireUser(req, res, db, { admin: true });
-    if (admin) ok(res, paginate(db.users, req));
+    if (admin) {
+      const page = paginate(db.users, req);
+      ok(res, { ...page, records: page.records.map((user) => sanitizeUser(user)) });
+    }
   }));
 
   router.post("/admin/users/:id/:action(ban|unban)", wrap(async (req, res) => {
@@ -606,7 +699,7 @@ function createApiRouter(store) {
     user.status = req.params.action === "ban" ? "封禁" : "正常";
     addAudit(db, admin.id, req.params.action === "ban" ? "封禁用户" : "解封用户", "user", user.id, user.nickname);
     await store.write(db);
-    ok(res, user);
+    ok(res, sanitizeUser(user));
   }));
 
   router.get("/admin/listings", wrap(async (req, res) => {
@@ -632,6 +725,23 @@ function createApiRouter(store) {
     const db = await store.read();
     const admin = requireUser(req, res, db, { admin: true });
     if (admin) ok(res, paginate(db.tasks, req));
+  }));
+
+  router.post("/admin/tasks/:id/status", wrap(async (req, res) => {
+    const db = await store.read();
+    const admin = requireUser(req, res, db, { admin: true });
+    if (!admin) return;
+    const task = db.tasks.find((item) => item.id === Number(req.params.id));
+    if (!task) return fail(res, 404, "任务不存在");
+    const status = (req.body || {}).status;
+    if (!["待接单", "进行中", "已完成", "已取消"].includes(status)) return fail(res, 400, "任务状态不合法");
+    task.status = status;
+    task.updatedAt = now();
+    task.timeline = task.timeline || [];
+    task.timeline.push({ text: `管理员将任务状态更新为 ${status}`, time: now() });
+    addAudit(db, admin.id, "更新任务状态", "task", task.id, `${task.title} / ${status}`);
+    await store.write(db);
+    ok(res, task);
   }));
 
   router.get("/admin/verifications", wrap(async (req, res) => {
@@ -673,6 +783,19 @@ function createApiRouter(store) {
     report.result = (req.body || {}).result || "已处理并保留记录";
     report.handledBy = admin.id;
     report.handledAt = now();
+    if (report.result.includes("下架")) {
+      const targetKind = report.targetKind || report.targetType;
+      const listing = targetKind === "listing" ? db.listings.find((item) => item.id === Number(report.targetId)) : null;
+      const task = targetKind === "task" ? db.tasks.find((item) => item.id === Number(report.targetId)) : null;
+      if (listing) {
+        listing.status = "已下架";
+        listing.updatedAt = now();
+      }
+      if (task) {
+        task.status = "已取消";
+        task.updatedAt = now();
+      }
+    }
     addAudit(db, admin.id, "处理举报", "report", report.id, report.result);
     await store.write(db);
     ok(res, report);
@@ -694,6 +817,26 @@ function createApiRouter(store) {
     addAudit(db, admin.id, "新增分类", "category", 0, `${body.channel}/${body.name}`);
     await store.write(db);
     ok(res, db.categories);
+  }));
+
+  router.post("/admin/announcements", wrap(async (req, res) => {
+    const db = await store.read();
+    const admin = requireUser(req, res, db, { admin: true });
+    if (!admin) return;
+    const body = req.body || {};
+    if (!body.title || !body.content) return fail(res, 400, "公告标题和内容不能为空");
+    const announcement = {
+      id: nextId(db.announcements || []),
+      title: String(body.title).trim(),
+      content: String(body.content).trim(),
+      level: body.level || "公告",
+      createdAt: now(),
+    };
+    db.announcements = db.announcements || [];
+    db.announcements.unshift(announcement);
+    addAudit(db, admin.id, "发布公告", "announcement", announcement.id, announcement.title);
+    await store.write(db);
+    ok(res, announcement);
   }));
 
   router.put("/admin/categories/:id", wrap(async (req, res) => {

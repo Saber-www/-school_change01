@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const mysql = require("mysql2/promise");
+const { hashPassword, isPasswordHash } = require("../utils/passwords");
 
 function createStore(env) {
   const dataDir = path.join(env.rootDir, "data");
@@ -14,6 +15,7 @@ function createStore(env) {
   const schemaFile = path.join(env.rootDir, "db/schema.sql");
   const mirrorTables = [
     "admin_audit_log",
+    "announcement",
     "notification",
     "review",
     "report",
@@ -51,9 +53,17 @@ function createStore(env) {
       Object.entries(seedUser).forEach(([key, value]) => {
         if (existing[key] === undefined || existing[key] === "") existing[key] = value;
       });
-      existing.password = seedUser.password;
+      if (!existing.password && seedUser.password) existing.password = seedUser.password;
     });
     return merged;
+  }
+
+  function normalizeUserSecrets(users = []) {
+    return users.map((user) => {
+      const password = user.password || user.passwordHash || "";
+      if (!password || isPasswordHash(password)) return { ...user, password };
+      return { ...user, password: hashPassword(password) };
+    });
   }
 
   function mergeSeedRecords(records = [], fallbackRecords = [], signatureOf) {
@@ -84,7 +94,7 @@ function createStore(env) {
 
   function normalizeState(data, seed) {
     const normalized = { ...seed, ...data };
-    normalized.users = mergeDemoUsers(normalized.users, seed.users);
+    normalized.users = normalizeUserSecrets(mergeDemoUsers(normalized.users, seed.users));
     normalized.verifications = mergeSeedRecords(
       normalized.verifications,
       seed.verifications,
@@ -184,6 +194,15 @@ function createStore(env) {
     return statusMap[value] ?? fallback;
   }
 
+  function announcementStatusCode(value, fallback = 0) {
+    const statusMap = {
+      正常: 0,
+      公告: 0,
+      下线: 1,
+    };
+    return statusMap[value] ?? fallback;
+  }
+
   function mysqlDate(value, fallbackToNow = true) {
     const date = value ? new Date(value) : new Date();
     if (Number.isNaN(date.getTime())) {
@@ -277,6 +296,7 @@ function createStore(env) {
     for (const statement of statements) {
       await pool.query(statement);
     }
+    await pool.query("ALTER TABLE listing_image MODIFY image_url TEXT NOT NULL");
   }
 
   async function clearMirrorTables(connection) {
@@ -398,7 +418,7 @@ function createStore(env) {
         for (const [index, image] of (listing.images || []).entries()) {
           await connection.execute(
             "INSERT INTO listing_image (listing_id, image_url, sort_order, created_at) VALUES (?, ?, ?, ?)",
-            [Number(listing.id) || null, text(image, "", 255), index + 1, mysqlDate(listing.createdAt)],
+            [Number(listing.id) || null, String(image || ""), index + 1, mysqlDate(listing.createdAt)],
           );
         }
       }
@@ -556,6 +576,20 @@ function createStore(env) {
         );
       }
 
+      for (const announcement of data.announcements || []) {
+        await connection.execute(
+          "INSERT INTO announcement (id, title, content, level, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+          [
+            Number(announcement.id) || null,
+            text(announcement.title, "", 100),
+            text(announcement.content, "", 65535),
+            text(announcement.level || "公告", "公告", 30),
+            announcementStatusCode(announcement.status || "正常"),
+            mysqlDate(announcement.createdAt),
+          ],
+        );
+      }
+
       for (const log of data.auditLogs || []) {
         await connection.execute(
           "INSERT INTO admin_audit_log (id, admin_id, action, target_type, target_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -616,7 +650,14 @@ function createStore(env) {
 
     const [stateRows] = await pool.query("SELECT data FROM app_state WHERE id = 1 LIMIT 1");
     const state = stateRows.length ? parseState(stateRows[0].data) : seed;
-    await syncStateToTables(normalizeState(state, seed));
+    const normalized = normalizeState(state, seed);
+    if (JSON.stringify(state) !== JSON.stringify(normalized)) {
+      await pool.execute(
+        "INSERT INTO app_state (id, data) VALUES (1, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",
+        [JSON.stringify(normalized)],
+      );
+    }
+    await syncStateToTables(normalized);
   }
 
   async function init() {
@@ -665,17 +706,19 @@ function createStore(env) {
   }
 
   async function write(data) {
+    const seed = await readSeed();
+    const normalized = normalizeState(data, seed);
     if (mode === "mysql" && pool) {
       await pool.execute(
         "INSERT INTO app_state (id, data) VALUES (1, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",
-        [JSON.stringify(data)],
+        [JSON.stringify(normalized)],
       );
-      await syncStateToTables(data);
+      await syncStateToTables(normalized);
       return;
     }
 
     await fs.mkdir(dataDir, { recursive: true });
-    await fs.writeFile(dataFile, JSON.stringify(data, null, 2));
+    await fs.writeFile(dataFile, JSON.stringify(normalized, null, 2));
   }
 
   async function reset() {

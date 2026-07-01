@@ -14,6 +14,8 @@ export function createMessagesFeature({
   setView,
   render,
   toast,
+  apiRequest,
+  syncDbFromServer,
   nextId,
   renderAuthRequired,
   renderInlineEmpty,
@@ -54,7 +56,12 @@ export function createMessagesFeature({
       state.selectedConversationId = conversations[0].id;
     }
     const selected = conversations.find((conv) => conv.id === state.selectedConversationId);
-    if (markConversationRead(selected, user)) saveDb();
+    if (markConversationRead(selected, user)) {
+      saveDb();
+      if (apiRequest) {
+        apiRequest(`/api/conversations/${selected.id}/read`, { method: "POST" }).catch(() => {});
+      }
+    }
   }
 
   function markConversationRead(conv, user = currentUser()) {
@@ -167,7 +174,7 @@ export function createMessagesFeature({
     `;
   }
 
-  function sendMessage(data, form) {
+  async function sendMessage(data, form) {
     if (!ensureAuth({ verified: true })) return;
     const conv = getDb().conversations.find((item) => item.id === Number(data.conversationId));
     if (!conv) return;
@@ -176,6 +183,20 @@ export function createMessagesFeature({
     if (!text) {
       toast("请输入消息内容");
       return;
+    }
+    try {
+      const result = await apiRequest("/api/messages", {
+        method: "POST",
+        body: JSON.stringify({ conversationId: conv.id, content: text }),
+      });
+      if (result.conversation) Object.assign(conv, result.conversation);
+      if (syncDbFromServer) await syncDbFromServer();
+      form.reset();
+      render();
+      toast("消息已发送");
+      return;
+    } catch (error) {
+      if (error?.message) toast(`${error.message}，已先保存在本地`);
     }
     const createdAt = new Date().toISOString();
     conv.messages.push({
@@ -191,7 +212,7 @@ export function createMessagesFeature({
     toast("消息已发送");
   }
 
-  function startConversation(kind, id) {
+  async function startConversation(kind, id) {
     if (!ensureAuth({ verified: true })) return;
     const db = getDb();
     const item = itemByKind(kind, id);
@@ -213,6 +234,28 @@ export function createMessagesFeature({
         row.participants.slice().sort((a, b) => a - b).join(",") === participantIds.join(","),
     );
     const isNewConversation = !conv;
+    const initialText = kind === "task" ? "你好，我想了解这个任务的细节。" : "你好，这条信息还有效吗？";
+    if (!conv && apiRequest) {
+      try {
+        const result = await apiRequest("/api/messages", {
+          method: "POST",
+          body: JSON.stringify({
+            targetType: kind,
+            targetId: Number(id),
+            receiverId: item.publisherId,
+            content: initialText,
+          }),
+        });
+        conv = result.conversation;
+        if (syncDbFromServer) await syncDbFromServer();
+        state.selectedConversationId = conv.id;
+        setView("messages", { selectedConversationId: conv.id });
+        toast("已创建会话，可继续发送消息");
+        return;
+      } catch (error) {
+        if (error?.message) toast(`${error.message}，已先创建本地会话`);
+      }
+    }
     if (!conv) {
       conv = {
         id: nextId(db.conversations),
@@ -224,7 +267,7 @@ export function createMessagesFeature({
         messages: [
           {
             senderId: user.id,
-            text: kind === "task" ? "你好，我想了解这个任务的细节。" : "你好，这条信息还有效吗？",
+            text: initialText,
             createdAt: new Date().toISOString(),
           },
         ],
