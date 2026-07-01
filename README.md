@@ -142,7 +142,10 @@ git push
 
 以后你本地改完代码，重新上传后，在服务器执行：
 
+sudo -i
 cd /www/campus-light-market
+git pull
 npm install
 npm run build
-pm2 restart campus-light-market
+pm2 restart campus-light-market --update-env
+pm2 save
