@@ -7,6 +7,54 @@ const FORBIDDEN_WORDS = ["代考", "代课", "代签到", "代写", "论文代�
 
 const sessions = new Map();
 
+function isAdminRemovedListing(listing) {
+  return Boolean(listing?.adminRemovedAt || listing?.adminRemovedBy || listing?.adminRemovalReason);
+}
+
+function markListingAdminRemoved(listing, admin, reason = "管理员下架") {
+  listing.status = "已下架";
+  listing.adminRemovedBy = admin.id;
+  listing.adminRemovedAt = new Date().toISOString();
+  listing.adminRemovalReason = reason;
+}
+
+function clearListingAdminRemoved(listing) {
+  delete listing.adminRemovedBy;
+  delete listing.adminRemovedAt;
+  delete listing.adminRemovalReason;
+}
+
+function latestListingModerationAudit(db, listing) {
+  const logs = (db.auditLogs || []).filter(
+    (log) =>
+      log.targetType === "listing" &&
+      Number(log.targetId) === Number(listing.id) &&
+      String(log.action || "").startsWith("帖子"),
+  );
+  return logs[logs.length - 1] || null;
+}
+
+function isListingLockedByAdmin(db, listing) {
+  const latestAudit = latestListingModerationAudit(db, listing);
+  return (
+    listing?.status === "已下架" &&
+    (isAdminRemovedListing(listing) || latestAudit?.action === "帖子已下架")
+  );
+}
+
+function hydrateAdminRemovedListings(db) {
+  let changed = false;
+  for (const listing of db.listings || []) {
+    if (isAdminRemovedListing(listing) || !isListingLockedByAdmin(db, listing)) continue;
+    const latestAudit = latestListingModerationAudit(db, listing);
+    listing.adminRemovedBy = latestAudit?.adminId || 0;
+    listing.adminRemovedAt = latestAudit?.createdAt || listing.updatedAt || new Date().toISOString();
+    listing.adminRemovalReason = latestAudit?.detail || "管理员下架";
+    changed = true;
+  }
+  return changed;
+}
+
 function createApiRouter(store) {
   const router = express.Router();
 
@@ -165,7 +213,11 @@ function createApiRouter(store) {
   });
 
   router.get("/bootstrap", wrap(async (req, res) => {
-    ok(res, sanitizeStateForClient(await store.read()));
+    const db = await store.read();
+    if (hydrateAdminRemovedListings(db)) {
+      await store.write(db);
+    }
+    ok(res, sanitizeStateForClient(db));
   }));
 
   router.put("/bootstrap", wrap(async (req, res) => {
@@ -350,7 +402,18 @@ function createApiRouter(store) {
     const listing = db.listings.find((item) => item.id === Number(req.params.id));
     if (!listing) return fail(res, 404, "帖子不存在");
     if (listing.publisherId !== user.id && user.role !== "admin") return fail(res, 403, "不能编辑他人帖子");
-    Object.assign(listing, req.body || {}, { updatedAt: now() });
+    const updates = { ...(req.body || {}) };
+    if (user.role !== "admin") {
+      delete updates.status;
+      delete updates.publisherId;
+      delete updates.adminRemovedBy;
+      delete updates.adminRemovedAt;
+      delete updates.adminRemovalReason;
+    }
+    Object.assign(listing, updates, { updatedAt: now() });
+    if (user.role === "admin" && listing.status === "展示中") {
+      clearListingAdminRemoved(listing);
+    }
     await store.write(db);
     ok(res, listing);
   }));
@@ -370,7 +433,14 @@ function createApiRouter(store) {
       }
     } else {
       if (listing.publisherId !== user.id && user.role !== "admin") return fail(res, 403, "只能管理自己的帖子");
+      if (isListingLockedByAdmin(db, listing) && user.role !== "admin") {
+        hydrateAdminRemovedListings(db);
+        return fail(res, 403, "该帖子已被管理员下架，不能自行变更状态");
+      }
       listing.status = req.params.action === "online" ? "展示中" : req.params.action === "offline" ? "已下架" : "已完成";
+      if (req.params.action === "online") {
+        clearListingAdminRemoved(listing);
+      }
     }
     listing.updatedAt = now();
     await store.write(db);
@@ -714,7 +784,12 @@ function createApiRouter(store) {
     if (!admin) return;
     const listing = db.listings.find((item) => item.id === Number(req.params.id));
     if (!listing) return fail(res, 404, "帖子不存在");
-    listing.status = req.params.action === "approve" ? "展示中" : "已下架";
+    if (req.params.action === "approve") {
+      listing.status = "展示中";
+      clearListingAdminRemoved(listing);
+    } else {
+      markListingAdminRemoved(listing, admin, "管理员下架");
+    }
     listing.updatedAt = now();
     addAudit(db, admin.id, `帖子${listing.status}`, "listing", listing.id, listing.title);
     await store.write(db);
@@ -788,7 +863,7 @@ function createApiRouter(store) {
       const listing = targetKind === "listing" ? db.listings.find((item) => item.id === Number(report.targetId)) : null;
       const task = targetKind === "task" ? db.tasks.find((item) => item.id === Number(report.targetId)) : null;
       if (listing) {
-        listing.status = "已下架";
+        markListingAdminRemoved(listing, admin, `举报处理：${report.result}`);
         listing.updatedAt = now();
       }
       if (task) {

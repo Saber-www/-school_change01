@@ -137,3 +137,12 @@ curl http://127.0.0.1:3003/api/health
 git add .
 git commit -m "update"
 git push
+
+8. 后续更新网站
+
+以后你本地改完代码，重新上传后，在服务器执行：
+
+cd /www/campus-light-market
+npm install
+npm run build
+pm2 restart campus-light-market

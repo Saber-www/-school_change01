@@ -296,7 +296,7 @@ function createStore(env) {
     for (const statement of statements) {
       await pool.query(statement);
     }
-    await pool.query("ALTER TABLE listing_image MODIFY image_url TEXT NOT NULL");
+    await pool.query("ALTER TABLE listing_image MODIFY image_url LONGTEXT NOT NULL");
   }
 
   async function clearMirrorTables(connection) {

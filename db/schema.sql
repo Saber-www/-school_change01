@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS listing (
 CREATE TABLE IF NOT EXISTS listing_image (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   listing_id BIGINT NOT NULL,
-  image_url TEXT NOT NULL,
+  image_url LONGTEXT NOT NULL,
   sort_order INT NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_listing_image_listing (listing_id, sort_order),

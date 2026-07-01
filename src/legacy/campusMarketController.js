@@ -324,6 +324,10 @@ function itemByKind(kind, id) {
   return collection.find((item) => item.id === Number(id)) || null;
 }
 
+function isAdminRemovedListing(item) {
+  return Boolean(item?.adminRemovedAt || item?.adminRemovedBy || item?.adminRemovalReason);
+}
+
 function upsertUser(user) {
   if (!user) return null;
   const index = db.users.findIndex((item) => item.id === user.id);
@@ -792,7 +796,7 @@ function renderInlineEmpty(text) {
 function renderListingCard(item, row = false, options = {}) {
   const publisher = userById(item.publisherId);
   const user = currentUser();
-  const canRelist = user?.id === item.publisherId && item.status === "已下架";
+  const canRelist = user?.id === item.publisherId && item.status === "已下架" && !isAdminRemovedListing(item);
   const canOpenOwnListing = options.ownerAccess && canViewOwnListingInProfile("listing", item, user);
   const canEdit = canOpenOwnListing;
   const detailAction = canOpenOwnListing ? "owner-detail" : "detail";
@@ -1213,6 +1217,15 @@ function renderListingActions(item) {
   }
 
   const editButton = `<button class="ghost-button" type="button" data-action="edit-listing" data-id="${item.id}">${icon("pencil")}修改信息</button>`;
+
+  if (item.status === "已下架" && isAdminRemovedListing(item)) {
+    return `
+      <div class="button-row">
+        ${editButton}
+        <p class="small-text">该信息已被管理员下架，需由管理员审核后恢复展示。</p>
+      </div>
+    `;
+  }
 
   if (item.status === "已下架" || item.status === "已完成") {
     const label = item.status === "已完成" ? "撤回成交并恢复展示" : "重新上架";
@@ -2766,6 +2779,10 @@ async function updateListingStatus(id, status) {
   if (!item) return;
   if (item.publisherId !== currentUser().id) {
     toast("只能管理自己的帖子");
+    return;
+  }
+  if (status === "展示中" && isAdminRemovedListing(item)) {
+    toast("该信息已被管理员下架，不能自行重新上架");
     return;
   }
   const action = status === "展示中" ? "online" : status === "已完成" ? "complete" : "offline";
