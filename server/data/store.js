@@ -689,8 +689,6 @@ function createStore(env) {
         const normalized = normalizeState(state, seed);
         if (JSON.stringify(state) !== JSON.stringify(normalized)) {
           await write(normalized);
-        } else {
-          await syncStateToTables(normalized);
         }
         return normalized;
       }

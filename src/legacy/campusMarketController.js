@@ -3032,20 +3032,23 @@ function nextId(collection) {
 }
 
 async function init() {
-  await syncDbFromServer();
-  await hydrateCurrentUser();
-  if (!db.users.some((user) => user.id === currentUserId)) {
-    authToken = "";
-    currentUserId = 0;
-    saveSession();
-  }
   document.addEventListener("click", handleClick);
   document.addEventListener("submit", handleSubmit);
   document.addEventListener("input", handleInput);
   document.addEventListener("keydown", handleKeydown);
   startSummaryAutoRefresh();
   render();
-  refreshSummaryData();
+  try {
+    await Promise.all([syncDbFromServer(), hydrateCurrentUser()]);
+    if (currentUserId && !db.users.some((user) => user.id === currentUserId)) {
+      authToken = "";
+      currentUserId = 0;
+      saveSession();
+    }
+  } finally {
+    render();
+    refreshSummaryData();
+  }
 }
 
 init();
