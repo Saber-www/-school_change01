@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const { hashPassword, isPasswordHash, verifyPassword } = require("../utils/passwords");
+const { migrateListingImagesToFiles, saveImageDataUrl } = require("../utils/uploads");
 
 const PUBLIC_LISTING_STATUSES = ["展示中"];
 const FORBIDDEN_WORDS = ["代考", "代课", "代签到", "代写", "论文代写", "药品", "管制刀具", "烟酒", "刷单", "账号交易", "身份证"];
@@ -55,7 +56,7 @@ function hydrateAdminRemovedListings(db) {
   return changed;
 }
 
-function createApiRouter(store) {
+function createApiRouter(store, env) {
   const router = express.Router();
 
   const wrap = (handler) => (req, res, next) => {
@@ -89,10 +90,25 @@ function createApiRouter(store) {
     return safeUser;
   }
 
-  function sanitizeStateForClient(db) {
-    return {
+  function sanitizeStateForClient(db, viewer = null) {
+    const safeState = {
       ...db,
       users: (db.users || []).map((user) => sanitizeUser(user)),
+    };
+
+    if (viewer?.role === "admin") return safeState;
+
+    const viewerId = Number(viewer?.id || 0);
+    return {
+      ...safeState,
+      listings: (safeState.listings || []).filter((item) => canReadListing(viewer, item) || Number(item.publisherId) === viewerId),
+      verifications: viewerId ? (safeState.verifications || []).filter((item) => Number(item.userId) === viewerId) : [],
+      favorites: viewerId ? (safeState.favorites || []).filter((item) => Number(item.userId) === viewerId) : [],
+      browseHistory: viewerId ? (safeState.browseHistory || []).filter((item) => Number(item.userId) === viewerId) : [],
+      conversations: viewerId ? (safeState.conversations || []).filter((item) => (item.participants || []).includes(viewerId)) : [],
+      reports: viewerId ? (safeState.reports || []).filter((item) => Number(item.reporterId) === viewerId) : [],
+      notifications: viewerId ? (safeState.notifications || []).filter((item) => Number(item.userId) === viewerId) : [],
+      auditLogs: [],
     };
   }
 
@@ -214,10 +230,26 @@ function createApiRouter(store) {
 
   router.get("/bootstrap", wrap(async (req, res) => {
     const db = await store.read();
-    if (hydrateAdminRemovedListings(db)) {
+    const viewer = currentUser(req, db);
+    const adminLockChanged = hydrateAdminRemovedListings(db);
+    const imageMigration = await migrateListingImagesToFiles(db, env.uploadDir);
+    if (adminLockChanged || imageMigration.changed) {
       await store.write(db);
     }
-    ok(res, sanitizeStateForClient(db));
+    ok(res, sanitizeStateForClient(db, viewer));
+  }));
+
+  router.post("/uploads/images", wrap(async (req, res) => {
+    const db = await store.read();
+    const user = requireUser(req, res, db, { verified: true });
+    if (!user) return;
+    let saved;
+    try {
+      saved = await saveImageDataUrl((req.body || {}).dataUrl, env.uploadDir);
+    } catch (error) {
+      return fail(res, 400, error.message || "图片上传失败");
+    }
+    ok(res, saved);
   }));
 
   router.put("/bootstrap", wrap(async (req, res) => {
@@ -226,7 +258,7 @@ function createApiRouter(store) {
     if (!admin) return;
     const merged = mergeBootstrapPayload(db, req.body || {});
     await store.write(merged);
-    ok(res, sanitizeStateForClient(merged));
+    ok(res, sanitizeStateForClient(merged, admin));
   }));
 
   router.post("/dev/reset", wrap(async (req, res) => {

@@ -19,10 +19,13 @@ const mysqlDatabase = requireSafeIdentifier(
   "MYSQL_DATABASE",
 );
 
+const rootDir = path.resolve(__dirname, "../..");
+
 module.exports = {
   port: toNumber(process.env.PORT, 3000),
-  rootDir: path.resolve(__dirname, "../.."),
+  rootDir,
   nodeEnv: process.env.NODE_ENV || "development",
+  uploadDir: path.resolve(rootDir, process.env.UPLOAD_DIR || "uploads"),
   mysql: {
     enabled: process.env.MYSQL_ENABLED !== "false",
     host: process.env.MYSQL_HOST || "127.0.0.1",

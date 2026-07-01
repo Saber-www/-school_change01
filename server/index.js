@@ -15,7 +15,14 @@ async function main() {
   app.disable("x-powered-by");
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({ limit: "20mb" }));
-  app.use("/api", createApiRouter(store));
+  app.use(
+    "/uploads",
+    express.static(env.uploadDir, {
+      immutable: true,
+      maxAge: "30d",
+    }),
+  );
+  app.use("/api", createApiRouter(store, env));
   app.use("/api", (req, res) => {
     res.status(404).json({ code: 404, message: "API not found", data: null });
   });
@@ -44,8 +51,21 @@ async function main() {
       }
     });
   } else if (fs.existsSync(distDir)) {
-    app.use(express.static(distDir));
+    app.use(express.static(distDir, {
+      maxAge: "30d",
+      immutable: true,
+      setHeaders(res, filePath) {
+        if (path.basename(filePath) === "index.html") {
+          res.setHeader("Cache-Control", "no-cache");
+          return;
+        }
+        if (!path.extname(filePath)) {
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      },
+    }));
     app.get("*", (req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(distDir, "index.html"));
     });
   }

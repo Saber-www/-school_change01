@@ -30,15 +30,18 @@ import {
   toast,
 } from "./domUtils.js";
 
+const SUMMARY_REFRESH_INTERVAL = 15000;
+const MAX_LOCAL_CACHE_CHARS = 2 * 1024 * 1024;
+
 let serverAvailable = false;
 let db = loadDb();
-let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
-let currentUserId = authToken ? Number(localStorage.getItem(SESSION_KEY)) || 0 : 0;
+localStorage.removeItem(AUTH_TOKEN_KEY);
+localStorage.removeItem(SESSION_KEY);
+let authToken = sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
+let currentUserId = authToken ? Number(sessionStorage.getItem(SESSION_KEY)) || 0 : 0;
 let searchTimer = 0;
 let summaryRefreshTimer = 0;
 let summaryRefreshPending = false;
-
-const SUMMARY_REFRESH_INTERVAL = 15000;
 
 const state = {
   view: "home",
@@ -93,27 +96,41 @@ function loadDb() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) {
     const seeded = createInitialDb();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+    cacheDbLocally(seeded);
     return seeded;
+  }
+
+  if (stored.length > MAX_LOCAL_CACHE_CHARS) {
+    localStorage.removeItem(STORAGE_KEY);
+    return createInitialDb();
   }
 
   try {
     const merged = mergeDbDefaults(JSON.parse(stored));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    cacheDbLocally(merged);
     return merged;
   } catch {
     const seeded = createInitialDb();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+    cacheDbLocally(seeded);
     return seeded;
   }
 }
 
-function saveDb() {
+function cacheDbLocally(nextDb) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    const serialized = JSON.stringify(nextDb);
+    if (serialized.length > MAX_LOCAL_CACHE_CHARS) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, serialized);
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
+}
+
+function saveDb() {
+  cacheDbLocally(db);
   if (serverAvailable && authToken && currentUser()?.role === "admin") {
     syncDbToServer();
   }
@@ -142,13 +159,16 @@ async function apiRequest(path, options = {}) {
 
 async function syncDbFromServer() {
   try {
-    const response = await fetch("/api/bootstrap", { cache: "no-store" });
+    const response = await fetch("/api/bootstrap", {
+      cache: "no-store",
+      headers: authHeaders(),
+    });
     if (!response.ok) throw new Error("server unavailable");
     const payload = await response.json();
     if (payload.code !== 0 || !payload.data) throw new Error(payload.message || "invalid server response");
-    db = mergeDbDefaults(payload.data);
+    db = mergeDbDefaults(payload.data, { preserveServerPayload: true });
     serverAvailable = true;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    cacheDbLocally(db);
     localStorage.setItem(SERVER_SYNC_KEY, "online");
   } catch {
     serverAvailable = false;
@@ -169,7 +189,7 @@ async function syncDbToServer() {
   }
 }
 
-function mergeDbDefaults(incoming) {
+function mergeDbDefaults(incoming, options = {}) {
   const fallback = createInitialDb();
   const merged = {
     ...fallback,
@@ -188,10 +208,20 @@ function mergeDbDefaults(incoming) {
     categories: incoming.categories || fallback.categories,
     auditLogs: incoming.auditLogs || fallback.auditLogs,
   };
-  return normalizeSeedData(merged, fallback);
+  return normalizeSeedData(merged, fallback, options);
 }
 
-function normalizeSeedData(target, fallback) {
+function normalizeSeedData(target, fallback, options = {}) {
+  if (options.preserveServerPayload) {
+    target.users = target.users || [];
+    target.verifications = target.verifications || [];
+    target.listings = target.listings || [];
+    target.tasks = target.tasks || [];
+    target.announcements = target.announcements || [];
+    target.categories = mergeCategories(target.categories || {}, fallback.categories || {});
+    return target;
+  }
+
   target.users = mergeDemoUsers(target.users || [], fallback.users);
   target.verifications = mergeSeedRecords(target.verifications || [], fallback.verifications, (item) => `user:${item.userId}:${item.studentNo}`);
   target.listings = mergeSeedRecords(target.listings || [], fallback.listings, (item) => `listing:${item.channel}:${item.title}`);
@@ -245,11 +275,11 @@ function mergeCategories(categories, fallbackCategories) {
 
 function saveSession() {
   if (authToken && currentUserId) {
-    localStorage.setItem(AUTH_TOKEN_KEY, authToken);
-    localStorage.setItem(SESSION_KEY, String(currentUserId));
+    sessionStorage.setItem(AUTH_TOKEN_KEY, authToken);
+    sessionStorage.setItem(SESSION_KEY, String(currentUserId));
   } else {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
   }
 }
 
@@ -633,13 +663,6 @@ function render() {
   prepareMessageReadState();
   renderHeader();
   const app = $("#app");
-  const user = currentUser();
-
-  if (!user) {
-    app.innerHTML = renderLoginPage();
-    hydrateIcons();
-    return;
-  }
 
   if (state.view === "home") {
     app.innerHTML = renderHome();
@@ -648,7 +671,9 @@ function render() {
   } else if (state.view === "detail") {
     app.innerHTML = renderDetail();
   } else if (state.view === "publish") {
-    app.innerHTML = renderPublish();
+    app.innerHTML = currentUser()
+      ? renderPublish()
+      : renderAuthRequired("登录并完成校园认证后可发布闲置、求购、跑腿和失物招领信息。");
   } else if (state.view === "profile") {
     app.innerHTML = renderProfile();
   } else if (state.view === "messages") {
@@ -681,13 +706,15 @@ function renderHome() {
     <section class="home-grid">
       <div class="home-hero">
         <div>
-          <p class="eyebrow">${escapeHtml(user?.campus || "校园轻集市")} · ${escapeHtml(user?.verifyStatus || "未认证")}</p>
+          <p class="eyebrow">${escapeHtml(user?.campus || "游客浏览")} · ${escapeHtml(user?.verifyStatus || "公开信息")}</p>
           <h1>
-            <span class="desktop-title">欢迎回来，${escapeHtml(user?.nickname || "同学")}</span>
-            <span class="mobile-title">欢迎回来</span>
+            <span class="desktop-title">${user ? `欢迎回来，${escapeHtml(user.nickname)}` : "先看看校园里有什么"}</span>
+            <span class="mobile-title">${user ? "欢迎回来" : "校园轻集市"}</span>
           </h1>
           <p class="lead">
-            这里汇总最新闲置、待接任务、站内沟通和校园公告，方便你继续处理正在进行的校园交易与互助。
+            ${user
+              ? "这里汇总最新闲置、待接任务、站内沟通和校园公告，方便你继续处理正在进行的校园交易与互助。"
+              : "未登录也可以浏览公开的闲置、求购、跑腿和失物信息；发布、收藏、联系和举报需要登录并完成对应认证。"}
           </p>
         </div>
         <div class="home-hero-metrics">
@@ -701,14 +728,16 @@ function renderHome() {
         <div class="side-panel">
           <div class="section-head compact">
             <div>
-              <p class="eyebrow">个人概览</p>
-              <h3>${escapeHtml(user?.nickname || "我的账号")}</h3>
+              <p class="eyebrow">${user ? "个人概览" : "游客入口"}</p>
+              <h3>${escapeHtml(user?.nickname || "登录后继续操作")}</h3>
             </div>
-            ${statusBadge(user?.verifyStatus || "未认证")}
+            ${user ? statusBadge(user.verifyStatus) : `<button class="secondary-button" type="button" data-action="login-modal">${icon("log-in")}登录</button>`}
           </div>
-          <div class="home-mini-stats">
-            ${renderSummaryShortcuts(summary, "home-mini-stat")}
-          </div>
+          ${
+            user
+              ? `<div class="home-mini-stats">${renderSummaryShortcuts(summary, "home-mini-stat")}</div>`
+              : `<p class="small-text">登录后可发布信息、收藏内容、站内沟通，并在个人中心查看自己的发布和任务。</p>`
+          }
         </div>
         <div class="side-panel">
           <div class="section-head compact">
@@ -800,7 +829,7 @@ function renderListingCard(item, row = false, options = {}) {
   const canOpenOwnListing = options.ownerAccess && canViewOwnListingInProfile("listing", item, user);
   const canEdit = canOpenOwnListing;
   const detailAction = canOpenOwnListing ? "owner-detail" : "detail";
-  const canShowFavorite = canBrowseItem("listing", item, user);
+  const canShowFavorite = Boolean(user && canBrowseItem("listing", item, user));
   const priceText =
     item.channel === "求购交换"
       ? `${money(item.budgetMin, "预算")} - ${money(item.budgetMax, "面议")}`
@@ -842,6 +871,7 @@ function renderListingCard(item, row = false, options = {}) {
 
 function renderTaskCard(task, row = false) {
   const publisher = userById(task.publisherId);
+  const user = currentUser();
   const isUrgent = new Date(task.deadlineAt) - Date.now() < 2 * 60 * 60 * 1000 && task.status !== "已完成";
   return `
     <article class="task-card ${isUrgent ? "urgent" : ""} ${row ? "list-row" : ""}">
@@ -868,7 +898,7 @@ function renderTaskCard(task, row = false) {
         </div>
         <div class="card-actions">
           <button class="secondary-button" type="button" data-action="detail" data-kind="task" data-id="${task.id}">${icon("eye")}详情</button>
-          ${renderFavoriteButton("task", task.id, task.favoriteCount)}
+          ${user ? renderFavoriteButton("task", task.id, task.favoriteCount) : ""}
         </div>
         <p class="meta">${escapeHtml(publisher.nickname)} · ${dateText(task.createdAt)} · 浏览 ${task.viewCount}</p>
       </div>
@@ -2588,9 +2618,14 @@ async function resolvePublishImage(file, channel) {
     return "";
   }
   try {
-    return await readFileAsDataUrl(file);
-  } catch {
-    toast("图片读取失败，请重新选择");
+    const dataUrl = await readFileAsDataUrl(file);
+    const result = await apiRequest("/api/uploads/images", {
+      method: "POST",
+      body: JSON.stringify({ dataUrl }),
+    });
+    return result.url;
+  } catch (error) {
+    toast(error.message || "图片上传失败，请重新选择");
     return "";
   }
 }
