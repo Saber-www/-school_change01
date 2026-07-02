@@ -1,7 +1,7 @@
 const crypto = require("node:crypto");
 const express = require("express");
 const { hashPassword, isPasswordHash, verifyPassword } = require("../utils/passwords");
-const { migrateListingImagesToFiles, saveImageDataUrl } = require("../utils/uploads");
+const { migrateListingImagesToFiles, saveImageDataUrl, saveProofDataUrl } = require("../utils/uploads");
 
 const PUBLIC_LISTING_STATUSES = ["展示中"];
 const FORBIDDEN_WORDS = ["代考", "代课", "代签到", "代写", "论文代写", "药品", "管制刀具", "烟酒", "刷单", "账号交易", "身份证"];
@@ -249,6 +249,19 @@ function createApiRouter(store, env) {
       saved = await saveImageDataUrl((req.body || {}).dataUrl, env.uploadDir);
     } catch (error) {
       return fail(res, 400, error.message || "图片上传失败");
+    }
+    ok(res, saved);
+  }));
+
+  router.post("/uploads/proofs", wrap(async (req, res) => {
+    const db = await store.read();
+    const user = requireUser(req, res, db);
+    if (!user) return;
+    let saved;
+    try {
+      saved = await saveProofDataUrl((req.body || {}).dataUrl, env.uploadDir);
+    } catch (error) {
+      return fail(res, 400, error.message || "认证材料上传失败");
     }
     ok(res, saved);
   }));

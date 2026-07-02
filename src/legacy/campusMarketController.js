@@ -1639,7 +1639,7 @@ function renderVerificationForm(user) {
 
   return `
     <h2>校园认证</h2>
-    <p class="lead">提交真实姓名、学号和校园邮箱或证明材料。管理员审核通过后可使用发布、接单和站内沟通。</p>
+    <p class="lead">提交真实姓名、学号和校园邮箱截图或证明材料文件。管理员审核通过后可使用发布、接单和站内沟通。</p>
     ${record ? `<p class="small-text">最近记录：${statusBadge(record.status)} ${record.rejectReason ? ` · ${escapeHtml(record.rejectReason)}` : ""}</p>` : ""}
     <div class="divider"></div>
     <form class="form-grid" data-form="verification">
@@ -1660,8 +1660,9 @@ function renderVerificationForm(user) {
         </select>
       </div>
       <div class="field">
-        <label for="proofUrl">证明材料</label>
-        <input id="proofUrl" name="proofUrl" required placeholder="邮箱地址或材料链接" />
+        <label for="proofFile">证明材料</label>
+        <input id="proofFile" name="proofFile" type="file" accept="image/*,.pdf" required />
+        <p class="small-text">请上传学生证、校园邮箱截图或教务系统截图，支持图片或 PDF，10MB 以内。</p>
       </div>
       <div class="field full">
         <button class="primary-button" type="submit">${icon("send")}提交认证</button>
@@ -1882,7 +1883,7 @@ function renderAdminVerification() {
                 <td>${escapeHtml(user.nickname)}<br><span class="small-text">${escapeHtml(user.campus)}</span></td>
                 <td>${escapeHtml(record.realName)}<br><span class="small-text">${escapeHtml(record.studentNo)}</span></td>
                 <td>${escapeHtml(record.method)}</td>
-                <td>${escapeHtml(record.proofUrl)}</td>
+                <td>${renderProofMaterial(record.proofUrl)}</td>
                 <td>${statusBadge(record.status)}</td>
                 <td class="admin-actions">
                   <button class="table-action" type="button" data-action="verify-review" data-id="${record.id}" data-status="通过">通过</button>
@@ -1895,6 +1896,15 @@ function renderAdminVerification() {
       </table>
     </div>
   `;
+}
+
+function renderProofMaterial(proofUrl) {
+  const proof = String(proofUrl || "").trim();
+  if (!proof) return "未上传";
+  if (proof.startsWith("/uploads/") || /^https?:\/\//.test(proof)) {
+    return `<a class="link-button" href="${escapeHtml(proof)}" target="_blank" rel="noopener">${icon("eye")}查看材料</a>`;
+  }
+  return escapeHtml(proof);
 }
 
 function renderAdminListings() {
@@ -2640,6 +2650,8 @@ function scanRisk(text) {
 
 async function submitVerification(data, form) {
   if (!ensureAuth()) return;
+  const proofUrl = await resolveVerificationFile(data.proofFile);
+  if (!proofUrl) return;
   try {
     await apiRequest("/api/verifications", {
       method: "POST",
@@ -2647,7 +2659,7 @@ async function submitVerification(data, form) {
         realName: data.realName.trim(),
         studentNo: data.studentNo.trim(),
         method: data.method,
-        proofUrl: data.proofUrl.trim(),
+        proofUrl,
       }),
     });
     await syncDbFromServer();
@@ -2656,6 +2668,32 @@ async function submitVerification(data, form) {
     render();
   } catch (error) {
     toast(error.message || "认证提交失败");
+  }
+}
+
+async function resolveVerificationFile(file) {
+  if (!file || typeof file === "string" || !file.size) {
+    toast("请选择本地认证材料文件");
+    return "";
+  }
+  if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+    toast("认证材料仅支持图片或 PDF");
+    return "";
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    toast("认证材料大小不能超过 10MB");
+    return "";
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file);
+    const result = await apiRequest("/api/uploads/proofs", {
+      method: "POST",
+      body: JSON.stringify({ dataUrl }),
+    });
+    return result.url;
+  } catch (error) {
+    toast(error.message || "认证材料上传失败，请重新选择");
+    return "";
   }
 }
 
