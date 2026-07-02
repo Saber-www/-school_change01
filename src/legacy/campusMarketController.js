@@ -166,7 +166,18 @@ async function syncDbFromServer() {
     if (!response.ok) throw new Error("server unavailable");
     const payload = await response.json();
     if (payload.code !== 0 || !payload.data) throw new Error(payload.message || "invalid server response");
-    db = mergeDbDefaults(payload.data, { preserveServerPayload: true });
+    const { viewer, ...serverDb } = payload.data;
+    db = mergeDbDefaults(serverDb, { preserveServerPayload: true });
+    if (authToken) {
+      if (viewer) {
+        upsertUser(viewer);
+        currentUserId = viewer.id;
+      } else {
+        authToken = "";
+        currentUserId = 0;
+      }
+      saveSession();
+    }
     serverAvailable = true;
     cacheDbLocally(db);
     localStorage.setItem(SERVER_SYNC_KEY, "online");
@@ -280,24 +291,6 @@ function saveSession() {
   } else {
     sessionStorage.removeItem(AUTH_TOKEN_KEY);
     sessionStorage.removeItem(SESSION_KEY);
-  }
-}
-
-async function hydrateCurrentUser() {
-  if (!authToken) {
-    currentUserId = 0;
-    saveSession();
-    return;
-  }
-  try {
-    const user = await apiRequest("/api/users/me", { method: "GET" });
-    upsertUser(user);
-    currentUserId = user.id;
-    saveSession();
-  } catch {
-    authToken = "";
-    currentUserId = 0;
-    saveSession();
   }
 }
 
@@ -3039,7 +3032,7 @@ async function init() {
   startSummaryAutoRefresh();
   render();
   try {
-    await Promise.all([syncDbFromServer(), hydrateCurrentUser()]);
+    await syncDbFromServer();
     if (currentUserId && !db.users.some((user) => user.id === currentUserId)) {
       authToken = "";
       currentUserId = 0;
@@ -3047,7 +3040,6 @@ async function init() {
     }
   } finally {
     render();
-    refreshSummaryData();
   }
 }
 

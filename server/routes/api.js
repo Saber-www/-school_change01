@@ -94,6 +94,7 @@ function createApiRouter(store, env) {
     const safeState = {
       ...db,
       users: (db.users || []).map((user) => sanitizeUser(user)),
+      viewer: sanitizeUser(viewer) || null,
     };
 
     if (viewer?.role === "admin") return safeState;

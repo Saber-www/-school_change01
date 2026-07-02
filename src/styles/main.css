@@ -384,7 +384,7 @@ h3 {
   overflow: hidden;
   background:
     linear-gradient(92deg, rgba(16, 46, 38, 0.9), rgba(16, 46, 38, 0.48)),
-    url("../assets/campus-market-hero.png") center / cover;
+    url("../assets/campus-market-hero.jpg") center / cover;
   box-shadow: var(--shadow);
 }
 
@@ -443,7 +443,7 @@ h3 {
   overflow: hidden;
   background:
     linear-gradient(90deg, rgba(16, 46, 38, 0.9), rgba(39, 108, 159, 0.5)),
-    url("../assets/campus-market-hero.png") center / cover;
+    url("../assets/campus-market-hero.jpg") center / cover;
   box-shadow: var(--shadow);
 }
 
